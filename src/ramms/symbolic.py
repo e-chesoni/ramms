@@ -217,6 +217,6 @@ def get_active_gap_vector(candidate_gaps, tolerance=1e-6, verbose=False):
     active_gap_vector = sp.Matrix(active_gap_expressions)
 
     if verbose:
-        display(active_gap_vector)
+        sp.pprint(active_gap_vector)
 
     return active_gap_vector

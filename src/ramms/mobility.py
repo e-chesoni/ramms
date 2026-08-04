@@ -58,13 +58,13 @@ def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
     
     if verbose:
         print(f"Active gap vector:")
-        display(active_gap_vector)
+        sp.pprint(active_gap_vector)
         print("\n")
         print(f"Generalized coordinates:")
-        display(q)
+        sp.pprint(q)
         print("\n")
         print(f"Active gap vector Jacobian:")
-        display(J)
+        sp.pprint(J)
         print("\n")
         print("Jacobian dimensions: ")
         print(J.shape)
