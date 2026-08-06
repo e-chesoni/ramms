@@ -5,6 +5,7 @@ from ramms.contact import (
     get_segment_segment_distance,
 )
 from ramms.plotting import plot_gap, plot_geometry
+from ramms.kinematics import rotate_with_cascade
 
 from _fixtures import make_three_unit_chain, make_two_unit_chain
 
@@ -54,10 +55,11 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
         xlim=(-15, 15),
         ylim=(-5, 55),
         node_diameter=1200,
-        segment_line_width=30,
+        segment_line_width=20,
     )
 
-    chain.rotate_with_cascade(
+    rotate_with_cascade(
+        chain,
         unit_index=1,
         pivot=chain.units[1].bottom_node,
         degrees=rotation_degrees,
@@ -76,10 +78,17 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
 
     print("Pivot descriptor:", chain.get_node_by_descriptor("1T").descriptor)
 
+    if rotation_degrees > 0:
+        xlim_min = -25
+        xlim_max = 15
+    else:
+        xlim_min = -15
+        xlim_max = 25
+
     plot_geometry(
         chain,
         plot_title="After Rotation and Translation",
-        xlim=(-30, 30),
+        xlim=(xlim_min, xlim_max),
         ylim=(-5, 45),
         node_diameter=1200,
         segment_line_width=30,
@@ -87,7 +96,7 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
 
 
 def main() -> None:
-    check_node_segment_gaps()
+    #check_node_segment_gaps()
     check_three_unit_segment_gap(rotation_degrees=-28.39)
     check_three_unit_segment_gap(rotation_degrees=28.39)
 

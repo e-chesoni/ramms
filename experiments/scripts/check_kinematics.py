@@ -3,6 +3,7 @@
 import numpy as np
 
 from ramms.plotting import plot_geometry
+from ramms.kinematics import get_fractional_centerline_position, rotate_with_cascade
 
 from _fixtures import make_three_unit_chain, make_two_unit_chain
 
@@ -34,7 +35,8 @@ def check_cascading_rotation() -> None:
         dtype=float,
     )
 
-    chain.rotate_with_cascade(
+    rotate_with_cascade(
+        chain,
         unit_index=1,
         pivot=chain.units[1].bottom_node,
         degrees=-25,
@@ -52,7 +54,8 @@ def check_cascading_rotation() -> None:
     print("Unit 2 bottom before:", unit_2_bottom_before)
     print(
         "Fractional position after motion:",
-        chain._get_fractional_centerline_position(
+        get_fractional_centerline_position(
+            chain,
             free_unit_index=1,
             railed_unit_index=2,
         ),

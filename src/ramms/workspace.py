@@ -44,13 +44,13 @@ def set_two_unit_configuration(
     - rotate unit 1 around node 1B
     - translate the entire unit vertically by z_shift
     """
-    chain.reset(offset=default_offset)
+    chain.reset()
 
     unit_1 = chain.units[1]
     pivot = unit_1.bottom_node
 
-    unit_1.transform(
-        point=pivot,
+    unit_1.rotate(
+        pivot=pivot,
         degrees=theta_deg
     )
 

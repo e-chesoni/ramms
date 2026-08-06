@@ -10,6 +10,15 @@ from ramms.workspace import (
 from _fixtures import make_two_unit_chain
 
 
+# offsets are given in mm
+NODE_DIAMETER = 2.0
+STRUT_WIDTH = 2.0
+VERTICAL_CONTACT_OFFSET = 2.0
+
+NODE_RADIUS = NODE_DIAMETER / 2
+STRUT_HALF_WIDTH = STRUT_WIDTH / 2
+
+
 def show_rotation_result(chain, result, title: str) -> None:
     plot_geometry(
         chain,
@@ -27,15 +36,17 @@ def check_rotation_limits() -> None:
     right_zero = find_right_max_rotation(chain, contact_offset=0.0)
     show_rotation_result(chain, right_zero, "Maximum Right Rotation — Zero Thickness")
 
-    contact_offset = 2.0 / 2 + 2.0 / 2
-    right_thick = find_right_max_rotation(chain, contact_offset=contact_offset)
+    NODE_STRUT_CONTACT_OFFSET = (
+        NODE_RADIUS
+        + STRUT_HALF_WIDTH
+    )
+    right_thick = find_right_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
     show_rotation_result(chain, right_thick, "Maximum Right Rotation — Finite Features")
 
     left_zero = find_left_max_rotation(chain, contact_offset=0.0)
     show_rotation_result(chain, left_zero, "Maximum Left Rotation — Zero Thickness")
 
-    contact_offset = 3.0 / 2 + 3.0 / 2
-    left_thick = find_left_max_rotation(chain, contact_offset=contact_offset)
+    left_thick = find_left_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
     show_rotation_result(chain, left_thick, "Maximum Left Rotation — Finite Features")
 
 
@@ -43,7 +54,7 @@ def check_vertical_limits() -> None:
     chain = make_two_unit_chain()
 
     for direction, label in (("up", "Maximum"), ("down", "Minimum")):
-        for contact_offset in (0.0, 3.0):
+        for contact_offset in (0.0, VERTICAL_CONTACT_OFFSET):
             result = find_vertical_limit(
                 chain,
                 direction=direction,

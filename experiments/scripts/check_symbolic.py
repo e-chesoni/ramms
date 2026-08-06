@@ -33,6 +33,6 @@ def main() -> None:
     )
     show("Specific symbolic gap magnitude", specific_gap.gap_magnitude)
 
-
+    print("ℹ️: this gap is purely symbolic, therefore we do not calculate the signed gap for it.")
 if __name__ == "__main__":
     main()

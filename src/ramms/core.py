@@ -9,16 +9,11 @@ import re
 import pprint
 import math
 from enum import Enum
-from plotly.subplots import make_subplots
-from collections import Counter
-from scipy.optimize import root
 from IPython.display import display # for printing things in LaTex
-from matplotlib.lines import Line2D
 from dataclasses import dataclass
-from scipy.optimize import root
-from scipy.optimize import least_squares
 
 from .exceptions import InvalidRAMMGeometryError
+
 
 class UnitType(Enum):
     RAILED = "railed"
@@ -32,7 +27,7 @@ class RAMM_Node:
     Standard node examples:
         top, right, bottom, left
 
-    Virtual-node examples:
+    Rail-node examples:
         left rail lower, left rail upper
     """
 
@@ -41,7 +36,7 @@ class RAMM_Node:
         long_name,
         coordinates,
         short_label=None,
-        is_virtual=False
+        is_rail_node=False
     ):
         self.long_name = long_name
 
@@ -53,7 +48,7 @@ class RAMM_Node:
         # Standard nodes default to the first letter:
         # top -> T, right -> R, etc.
         #
-        # Virtual rail nodes receive explicit labels such as:
+        # Rail rail nodes receive explicit labels such as:
         # RLL = rail left lower
         self.short_label = (
             short_label
@@ -61,12 +56,12 @@ class RAMM_Node:
             else long_name[0].upper()
         )
 
-        self.is_virtual = is_virtual
+        self.is_rail_node = is_rail_node
         self.unit_index = None
 
     @property
     def get_details(self):
-        return f"{self.long_name}: {self.coordinates}"
+        return f"{self.long_name} node coordinates: {self.coordinates}"
 
     @property
     def descriptor(self):
@@ -91,9 +86,9 @@ class RAMM_Strut:
     """
     A segment connecting two RAMM_Node objects.
 
-    Diamond nodes should be passed in clockwise order.
+    Nodes should be passed in clockwise order.
 
-    Virtual rails are directed from their lower endpoint to their
+    Rail nodes are directed from their lower endpoint to their
     upper endpoint.
     """
 
@@ -101,13 +96,13 @@ class RAMM_Strut:
         self,
         node_1,
         node_2,
-        is_virtual=False,
+        is_rail_node=False,
         segment_type="strut"
     ):
         self.node_1 = node_1
         self.node_2 = node_2
 
-        self.is_virtual = is_virtual
+        self.is_rail_node = is_rail_node
         self.segment_type = segment_type
 
     @property
@@ -124,10 +119,10 @@ class RAMM_Strut:
 
         Examples
         --------
-        Diamond strut:
+        RAMM strut:
             Unit 1 bottom -> left = 1B1L
 
-        Virtual left rail:
+        Left rail:
             Unit 0 rail-left-lower -> rail-left-upper
             = 0RLL0RLU
         """
@@ -142,12 +137,12 @@ class RAMM_Strut:
 
 class RAMM_Unit:
     """
-    A four-sided RAMM diamond unit.
+    A four-sided RAMM unit (forms a rigid diamond).
 
     Nodes must be passed clockwise, beginning with the top node.
 
-    RAILED units additionally contain two virtual rail segments.
-    FREE units do not contain virtual rails.
+    RAILED units additionally contain two rail segments.
+    FREE units do not contain rails.
     """
 
     def __init__(
@@ -196,31 +191,31 @@ class RAMM_Unit:
             RAMM_Strut(
                 top_node,
                 right_node,
-                is_virtual=False,
+                is_rail_node=False,
                 segment_type="diamond_strut"
             ),
             RAMM_Strut(
                 right_node,
                 bottom_node,
-                is_virtual=False,
+                is_rail_node=False,
                 segment_type="diamond_strut"
             ),
             RAMM_Strut(
                 bottom_node,
                 left_node,
-                is_virtual=False,
+                is_rail_node=False,
                 segment_type="diamond_strut"
             ),
             RAMM_Strut(
                 left_node,
                 top_node,
-                is_virtual=False,
+                is_rail_node=False,
                 segment_type="diamond_strut"
             )
         ]
 
         # ---------------------------------------------------------
-        # Virtual rail geometry
+        # Rail geometry
         # ---------------------------------------------------------
 
         self.rail_nodes = (
@@ -238,19 +233,19 @@ class RAMM_Unit:
         if self.unit_type == UnitType.FREE:
             if self.rail_nodes or self.rails:
                 raise InvalidRAMMGeometryError(
-                    "FREE units cannot contain virtual rails."
+                    "FREE units cannot contain rails."
                 )
 
         if self.unit_type == UnitType.RAILED:
             if len(self.rail_nodes) != 4:
                 raise InvalidRAMMGeometryError(
-                    "A RAILED unit must contain four virtual "
+                    "A RAILED unit must contain four "
                     "rail endpoint nodes."
                 )
 
             if len(self.rails) != 2:
                 raise InvalidRAMMGeometryError(
-                    "A RAILED unit must contain two virtual rails."
+                    "A RAILED unit must contain two rails."
                 )
 
         # Every point that moves rigidly with the unit.
@@ -273,7 +268,7 @@ class RAMM_Unit:
         y1, z1 = rail.node_1.coordinates
         y2, z2 = rail.node_2.coordinates
 
-        return math.hypot(
+        return math.hypot( # get the euclidian diststace between 2 points
             y2 - y1,
             z2 - z1
         )
@@ -282,7 +277,7 @@ class RAMM_Unit:
         """
         Confirm that all four diamond struts have equal length.
 
-        Virtual rails are intentionally excluded because their length
+        Rails are intentionally excluded because their length
         is derived separately from the diamond geometry.
         """
         distances = []
@@ -315,7 +310,7 @@ class RAMM_Unit:
             )
 
     @staticmethod
-    def transform_point(point, pivot, degrees):
+    def rotate_point(point, pivot, degrees):
         """
         Rotate one (y, z) point counterclockwise around a pivot.
         """
@@ -342,17 +337,32 @@ class RAMM_Unit:
             pivot_z + rotated_z
         )
 
-    def transform(self, point, degrees): # TODO: Rename this rotate when you leave notebook
+    def rotate(self, pivot, degrees): # for point, you can pass either a point or a ramm node
         """
         Rotate the entire rigid unit around a node or arbitrary point.
-        """
-        if isinstance(point, RAMM_Node):
-            pivot = point.coordinates
-        else:
-            pivot = point
 
+        Parameters
+        ----------
+        point:
+            coordinates in tuple format: (y, z)
+
+        degrees:
+            amount to rotate in degrees
+        """
+        # check to make sure we got the right thing
+        if isinstance(pivot, RAMM_Node):
+            pivot = pivot.coordinates
+        elif not isinstance(pivot, tuple):
+            raise ValueError(
+                "Pivot must be a RAMM_Node or coordinate tuple."
+            )
+        elif len(pivot) != 2:
+                raise ValueError(
+                    "Coordinate tuple must contain exactly two values."
+                )
+        
         for node in self.all_nodes:
-            node.coordinates = self.transform_point(
+            node.coordinates = self.rotate_point(
                 point=node.coordinates,
                 pivot=pivot,
                 degrees=degrees
@@ -372,7 +382,7 @@ class RAMM_Unit:
     
     def get_rail(self, side):
         """
-        Return the requested virtual rail.
+        Return the requested rail.
 
         Parameters
         ----------
@@ -398,7 +408,7 @@ class RAMM_Unit:
 
     def get_struts_clockwise(self):
         """
-        Return the four diamond struts in clockwise order,
+        Return the four RAMM struts in clockwise order,
         beginning with the top-right strut.
 
         Order:
@@ -408,11 +418,11 @@ class RAMM_Unit:
 
     def get_strut_by_descriptor(self, descriptor):
         """
-        Return the requested diamond strut.
+        Return the requested RAMM strut.
 
         Example
         -------
-        chain.get_strut_by_descriptor("1R1B")
+            chain.get_strut_by_descriptor("1R1B")
         """
         for strut in self.get_struts_bottom_to_top_clockwise():
             if strut.descriptor == descriptor:
@@ -511,7 +521,7 @@ class RAMM_Unit:
             Rotate around the local bottom node and then translate to
             the requested global bottom-node position.
             """
-            rotated_y, rotated_z = cls.transform_point(
+            rotated_y, rotated_z = cls.rotate_point(
                 point=local_position,
                 pivot=(0.0, 0.0),
                 degrees=rotation_deg
@@ -581,11 +591,7 @@ class RAMM_Unit:
             # rail_half_length / diamond_half_height
             #     = 1 - rail_half_spacing / diamond_half_width
             rail_half_length = (
-                diamond_half_height
-                * (
-                    1
-                    - rail_half_spacing / diamond_half_width
-                )
+                diamond_half_height * ( 1 - rail_half_spacing / diamond_half_width)
             )
 
             left_rail_y = (
@@ -630,7 +636,7 @@ class RAMM_Unit:
                     local_rail_positions["left_lower"]
                 ),
                 short_label="RLL",
-                is_virtual=True
+                is_rail_node=True
             )
 
             # RLU = Rail Left Upper
@@ -640,7 +646,7 @@ class RAMM_Unit:
                     local_rail_positions["left_upper"]
                 ),
                 short_label="RLU",
-                is_virtual=True
+                is_rail_node=True
             )
 
             # RRL = Rail Right Lower
@@ -650,7 +656,7 @@ class RAMM_Unit:
                     local_rail_positions["right_lower"]
                 ),
                 short_label="RRL",
-                is_virtual=True
+                is_rail_node=True
             )
 
             # RRU = Rail Right Upper
@@ -660,7 +666,7 @@ class RAMM_Unit:
                     local_rail_positions["right_upper"]
                 ),
                 short_label="RRU",
-                is_virtual=True
+                is_rail_node=True
             )
 
             rail_nodes = [
@@ -673,14 +679,14 @@ class RAMM_Unit:
             left_rail = RAMM_Strut(
                 node_1=left_rail_lower,
                 node_2=left_rail_upper,
-                is_virtual=True,
+                is_rail_node=True,
                 segment_type="rail"
             )
 
             right_rail = RAMM_Strut(
                 node_1=right_rail_lower,
                 node_2=right_rail_upper,
-                is_virtual=True,
+                is_rail_node=True,
                 segment_type="rail"
             )
 
@@ -718,7 +724,8 @@ class RAMM_Chain:
     ):
         self.units = []
         self.node_diameter = float(node_diameter)
-    
+        self.default_coordinates = None
+
     def get_struts_bottom_to_top_clockwise(self):
         """
         Return all diamond struts in the chain.
@@ -797,7 +804,7 @@ class RAMM_Chain:
     def get_node_by_descriptor(
         self,
         node_descriptor,
-        include_virtual=True
+        include_rails=True # may help reduce search time in the long run, since terms are already divided
     ):
         unit_index = self._get_unit_index_from_descriptor(
             node_descriptor
@@ -807,7 +814,7 @@ class RAMM_Chain:
 
         nodes_to_search = (
             unit.all_nodes
-            if include_virtual
+            if include_rails
             else unit.nodes
         )
 
@@ -823,7 +830,7 @@ class RAMM_Chain:
     def get_segment_by_descriptor(
         self,
         segment_descriptor,
-        include_virtual=True
+        include_rails=True # may help reduce search time in the long run, since terms are already divided
     ):
         unit_index = self._get_unit_index_from_descriptor(
             segment_descriptor
@@ -833,7 +840,7 @@ class RAMM_Chain:
 
         segments_to_search = (
             unit.all_segments
-            if include_virtual
+            if include_rails
             else unit.struts
         )
 
@@ -850,7 +857,7 @@ class RAMM_Chain:
         self,
         unit_index,
         node_long_name,
-        include_virtual=True
+        include_virtual=True # may help reduce search time in the long run, since terms are already divided
     ):
         unit = self.units[unit_index]
 
@@ -873,7 +880,7 @@ class RAMM_Chain:
         self,
         unit_index,
         segment_long_name,
-        include_virtual=True
+        include_virtual=True # may help reduce search time in the long run, since terms are already divided
     ):
         unit = self.units[unit_index]
 
@@ -930,94 +937,6 @@ class RAMM_Chain:
             return None
 
         return self.units[below_index]
-    
-    def _get_fractional_centerline_position(
-        self,
-        free_unit_index,
-        railed_unit_index,
-        tolerance=1e-9
-    ):
-        """
-        Calculate the fractional position of the FREE unit's top node
-        along the neighboring RAILED unit's bottom-to-top centerline.
-
-        s = 0:
-            FREE top coincides with the RAILED bottom node.
-
-        s = 1:
-            FREE top coincides with the RAILED top node.
-
-        0 < s < 1:
-            FREE top lies between the RAILED bottom and top nodes.
-        """
-        free_unit = self.units[free_unit_index]
-        railed_unit = self.units[railed_unit_index]
-
-        if free_unit.unit_type != UnitType.FREE:
-            raise ValueError(
-                f"Unit {free_unit_index} must be FREE."
-            )
-
-        if railed_unit.unit_type != UnitType.RAILED:
-            raise ValueError(
-                f"Unit {railed_unit_index} must be RAILED."
-            )
-
-        free_top = np.asarray(
-            free_unit.top_node.coordinates,
-            dtype=float
-        )
-
-        railed_bottom = np.asarray(
-            railed_unit.bottom_node.coordinates,
-            dtype=float
-        )
-
-        railed_top = np.asarray(
-            railed_unit.top_node.coordinates,
-            dtype=float
-        )
-
-        centerline = railed_top - railed_bottom
-        centerline_length_squared = np.dot(
-            centerline,
-            centerline
-        )
-
-        if centerline_length_squared <= tolerance:
-            raise InvalidRAMMGeometryError(
-                f"RAILED Unit {railed_unit_index} has a "
-                "zero-length centerline."
-            )
-
-        s = np.dot(
-            free_top - railed_bottom,
-            centerline
-        ) / centerline_length_squared
-
-        # Perpendicular error between the FREE top node and
-        # the RAILED unit centerline.
-        projection = railed_bottom + s * centerline
-
-        centerline_error = np.linalg.norm(
-            free_top - projection
-        )
-
-        if centerline_error > tolerance:
-            raise InvalidRAMMGeometryError(
-                f"FREE Unit {free_unit_index}'s top node is not "
-                f"on RAILED Unit {railed_unit_index}'s centerline. "
-                f"Error: {centerline_error:.6e}"
-            )
-
-        if s < -tolerance or s > 1 + tolerance:
-            raise InvalidRAMMGeometryError(
-                f"FREE Unit {free_unit_index}'s top node is not "
-                f"between RAILED Unit {railed_unit_index}'s "
-                f"bottom and top nodes. s = {s:.6f}"
-            )
-
-        return float(s)
 
     def _save_coordinates(self):
         """
@@ -1057,287 +976,6 @@ class RAMM_Chain:
                 unit_coordinates
             ):
                 node.coordinates = tuple(coordinates)
-
-    def _translate_units_from(
-        self,
-        start_unit_index,
-        dy,
-        dz
-    ):
-        """
-        Translate start_unit_index and every unit above it.
-
-        This preserves the relative geometry of the upper portion
-        of the chain.
-        """
-        if not 0 <= start_unit_index < len(self.units):
-            raise IndexError(
-                f"Invalid start unit index: {start_unit_index}"
-            )
-
-        for unit in self.units[start_unit_index:]:
-            unit.translate(
-                dy=dy,
-                dz=dz
-            )
-
-    def _reposition_railed_unit_from_free_top(
-        self,
-        free_unit_index,
-        railed_unit_index,
-        fractional_position
-    ):
-        """
-        Translate the neighboring RAILED unit and all units above it
-        so the FREE top node remains at the specified fractional
-        position along the RAILED unit's centerline.
-
-        The RAILED unit's orientation is preserved in this first model.
-        """
-        free_unit = self.units[free_unit_index]
-        railed_unit = self.units[railed_unit_index]
-
-        free_top = np.asarray(
-            free_unit.top_node.coordinates,
-            dtype=float
-        )
-
-        current_bottom = np.asarray(
-            railed_unit.bottom_node.coordinates,
-            dtype=float
-        )
-
-        current_top = np.asarray(
-            railed_unit.top_node.coordinates,
-            dtype=float
-        )
-
-        centerline = current_top - current_bottom
-
-        # We want:
-        #
-        # free_top = new_bottom + s * centerline
-        #
-        # Therefore:
-        #
-        # new_bottom = free_top - s * centerline
-        target_bottom = (
-            free_top
-            - fractional_position * centerline
-        )
-
-        translation = target_bottom - current_bottom
-        dy, dz = translation
-
-        self._translate_units_from(
-            start_unit_index=railed_unit_index,
-            dy=dy,
-            dz=dz
-        )
-
-        return float(dy), float(dz)
-
-    def _validate_free_railed_centerline_constraint(
-        self,
-        free_unit_index,
-        railed_unit_index,
-        expected_fractional_position=None,
-        tolerance=1e-8
-    ):
-        """
-        Confirm that the FREE top node lies on and between the
-        neighboring RAILED unit's bottom-to-top centerline.
-        """
-        actual_s = self._get_fractional_centerline_position(
-            free_unit_index=free_unit_index,
-            railed_unit_index=railed_unit_index,
-            tolerance=tolerance
-        )
-
-        if expected_fractional_position is not None:
-            if not math.isclose(
-                actual_s,
-                expected_fractional_position,
-                abs_tol=tolerance
-            ):
-                raise InvalidRAMMGeometryError(
-                    "The fractional rail position changed during "
-                    "the cascading transformation. "
-                    f"Expected {expected_fractional_position:.9f}, "
-                    f"received {actual_s:.9f}."
-                )
-
-        return actual_s
-
-    def rotate_with_cascade(
-        self,
-        unit_index,
-        pivot,
-        degrees,
-        penetration_validator=None,
-        tolerance=1e-8,
-        verbose=True
-    ):
-        """
-        Rotate a FREE unit and propagate the resulting motion upward.
-
-        First-version kinematic rule
-        ----------------------------
-        If the FREE unit has a RAILED unit immediately above it:
-
-        1. Record the FREE top node's fractional position along the
-        RAILED unit's centerline.
-        2. Rotate the FREE unit.
-        3. Preserve the RAILED unit's orientation.
-        4. Translate the RAILED unit and every unit above it so the
-        moved FREE top node retains the same fractional position.
-        5. Validate the centerline constraint.
-        6. Optionally validate nonpenetration.
-
-        Parameters
-        ----------
-        unit_index:
-            Index of the FREE unit being rotated.
-
-        pivot:
-            RAMM_Node or coordinate pair about which the FREE unit
-            rotates.
-
-        degrees:
-            Counterclockwise rotation in degrees.
-
-        penetration_validator:
-            Optional callable:
-
-                penetration_validator(chain) -> bool
-
-            It should return True when the resulting chain is valid
-            and False when penetration occurs.
-
-            If validation fails, the entire move is undone.
-
-        tolerance:
-            Numerical tolerance for centerline validation.
-
-        verbose:
-            Print information about the cascading motion.
-        """
-        if not 0 <= unit_index < len(self.units):
-            raise IndexError(
-                f"Invalid unit index: {unit_index}"
-            )
-
-        free_unit = self.units[unit_index]
-
-        if free_unit.unit_type != UnitType.FREE:
-            raise ValueError(
-                "rotate_with_cascade() must initially be called "
-                "on a FREE unit."
-            )
-
-        saved_coordinates = self._save_coordinates()
-
-        railed_unit_index = unit_index + 1
-
-        has_railed_unit_above = (
-            railed_unit_index < len(self.units)
-            and self.units[railed_unit_index].unit_type
-            == UnitType.RAILED
-        )
-
-        try:
-            if has_railed_unit_above:
-                fractional_position = (
-                    self._get_fractional_centerline_position(
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        tolerance=tolerance
-                    )
-                )
-            else:
-                fractional_position = None
-
-            # Rotate only the requested FREE unit first.
-            free_unit.transform(
-                point=pivot,
-                degrees=degrees
-            )
-
-            translation = (0.0, 0.0)
-
-            if has_railed_unit_above:
-                translation = (
-                    self._reposition_railed_unit_from_free_top(
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        fractional_position=fractional_position
-                    )
-                )
-
-                actual_s = (
-                    self._validate_free_railed_centerline_constraint(
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        expected_fractional_position=(
-                            fractional_position
-                        ),
-                        tolerance=tolerance
-                    )
-                )
-            else:
-                actual_s = None
-
-            # Let the existing contact framework decide whether
-            # the new configuration penetrates.
-            if penetration_validator is not None:
-                is_valid = penetration_validator(self)
-
-                if not is_valid:
-                    raise InvalidRAMMGeometryError(
-                        "Cascading rotation caused penetration."
-                    )
-
-        except Exception:
-            self._restore_coordinates(saved_coordinates)
-            raise
-
-        if verbose:
-            print(
-                f"Rotated FREE Unit {unit_index} by "
-                f"{degrees:.6f}°."
-            )
-
-            if has_railed_unit_above:
-                dy, dz = translation
-
-                print(
-                    f"Translated RAILED Unit "
-                    f"{railed_unit_index} and all units above it:"
-                )
-                print(f"  dy = {dy:.6f} mm")
-                print(f"  dz = {dz:.6f} mm")
-                print(
-                    f"Preserved fractional centerline position: "
-                    f"s = {actual_s:.6f}"
-                )
-            else:
-                print(
-                    "No RAILED unit exists immediately above; "
-                    "no upward cascade was required."
-                )
-
-        return {
-            "success": True,
-            "rotated_unit_index": unit_index,
-            "degrees": degrees,
-            "railed_unit_index": (
-                railed_unit_index
-                if has_railed_unit_above
-                else None
-            ),
-            "fractional_position": actual_s,
-            "translation": translation
-        }
 
     @classmethod
     def generate(
@@ -1557,6 +1195,11 @@ class RAMM_Chain:
 
         chain.validate_chain_geometry_upon_creation()
 
+        # ensure default coordinates cannot be overwritten
+        chain.default_coordinates = copy.deepcopy(
+            chain._save_coordinates()
+        )
+
         return chain
 
     def rotate(self, unit_index, pivot, degrees):
@@ -1565,8 +1208,8 @@ class RAMM_Chain:
             f"{pivot} by {degrees} degrees..."
         )
 
-        self.units[unit_index].transform(
-            point=pivot,
+        self.units[unit_index].rotate(
+            pivot=pivot,
             degrees=degrees
         )
 
@@ -1607,17 +1250,15 @@ class RAMM_Chain:
             dz=dz
         )
 
-    def reset(self, offset=10):
+    def reset(self):
         """
-        Reset the chain to its default configuration while preserving
-        its node diameter.
+        Restore the chain to the configuration in which it was generated.
         """
-        default_chain = type(self).generate(
-            n_units=len(self.units),
-            start_position=(0, 0),
-            offsets=(0, offset),
-            rotations=0,
-            node_diameter=self.node_diameter
-        )
+        if self.default_coordinates is None:
+            raise ValueError(
+                "No default geometry has been saved."
+            )
 
-        self.units = default_chain.units
+        self._restore_coordinates(
+            self.default_coordinates
+        )
