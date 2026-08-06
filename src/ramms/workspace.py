@@ -87,6 +87,7 @@ def get_right_limit_gaps(chain):
 
     return gap_right, gap_top
 
+
 def get_reference_side(
     chain,
     node_descriptor,
