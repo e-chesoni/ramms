@@ -72,10 +72,29 @@ def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
     """
     active_gap_vector = sp.Matrix(active_gap_vector)
 
-    if q is None: # get all the variables in the active_gap_vector (these are our generalized coordinates)
+    if q is None:
         q = sp.Matrix(
-            sorted(active_gap_vector.free_symbols, key=lambda s: s.name)
+            sorted(
+                active_gap_vector.free_symbols,
+                key=lambda s: s.name
+            )
         )
+
+    # ---------------------------------------------------------
+    # No active constraints
+    # ---------------------------------------------------------
+    if active_gap_vector.rows == 0:
+        J = sp.zeros(0, len(q))
+
+        if verbose:
+            print("No active gaps.")
+            print("\nGeneralized coordinates:")
+            sp.pprint(q)
+            print("\nActive gap Jacobian:")
+            sp.pprint(J)
+            print(f"\nJacobian dimensions: {J.shape}")
+
+        return J, q
 
     J = active_gap_vector.jacobian(q)
     

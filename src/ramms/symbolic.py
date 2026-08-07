@@ -142,44 +142,207 @@ def get_node_segment_symbolic_gap(node, segment, orientation):
 
 
 def get_candidate_gaps(chain):
+    """
+    Return candidate node-segment gaps for RAILED-FREE unit pairs.
+
+    For each lower RAILED / upper FREE pair, this includes:
+
+    1. Lower RAILED diamond nodes against upper FREE diamond struts.
+    2. Upper FREE bottom node against the lower RAILED unit's
+       left and right rails.
+
+    Notes
+    -----
+    This currently assumes the alternating chain structure:
+
+        RAILED, FREE, RAILED, FREE, ...
+
+    and evaluates RAILED-FREE pairs:
+        (0, 1), (2, 3), ...
+    """
+
     gaps = []
 
-    for lower_unit in range(0, len(chain.units) - 1, 2):
-        upper_unit = lower_unit + 1
+    # Evaluate each RAILED-FREE pair.
+    for lower_unit_index in range(
+        0,
+        len(chain.units) - 1,
+        2
+    ):
+        upper_unit_index = lower_unit_index + 1
+
+        # ---------------------------------------------------------
+        # Upper FREE unit diamond struts
+        # ---------------------------------------------------------
 
         segment_BL = chain.get_segment_by_descriptor(
-            f"{upper_unit}B{upper_unit}L"
-        )
-        segment_TR = chain.get_segment_by_descriptor(
-            f"{upper_unit}T{upper_unit}R"
-        )
-        segment_RB = chain.get_segment_by_descriptor(
-            f"{upper_unit}R{upper_unit}B"
-        )
-        segment_LT = chain.get_segment_by_descriptor(
-            f"{upper_unit}L{upper_unit}T"
+            f"{upper_unit_index}B{upper_unit_index}L"
         )
 
-        node_T = chain.get_node_by_descriptor(f"{lower_unit}T")
-        node_R = chain.get_node_by_descriptor(f"{lower_unit}R")
-        node_B = chain.get_node_by_descriptor(f"{lower_unit}B")
-        node_L = chain.get_node_by_descriptor(f"{lower_unit}L")
+        segment_TR = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}T{upper_unit_index}R"
+        )
+
+        segment_RB = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}R{upper_unit_index}B"
+        )
+
+        segment_LT = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}L{upper_unit_index}T"
+        )
+
+        # ---------------------------------------------------------
+        # Lower RAILED unit rails
+        # ---------------------------------------------------------
+
+        rail_L = chain.get_rail(
+            lower_unit_index,
+            "left"
+        )
+
+        rail_R = chain.get_rail(
+            lower_unit_index,
+            "right"
+        )
+
+        # ---------------------------------------------------------
+        # Lower RAILED unit diamond nodes
+        # ---------------------------------------------------------
+
+        lower_node_T = chain.get_node_by_descriptor(
+            f"{lower_unit_index}T"
+        )
+
+        lower_node_R = chain.get_node_by_descriptor(
+            f"{lower_unit_index}R"
+        )
+
+        lower_node_B = chain.get_node_by_descriptor(
+            f"{lower_unit_index}B"
+        )
+
+        lower_node_L = chain.get_node_by_descriptor(
+            f"{lower_unit_index}L"
+        )
+
+        # ---------------------------------------------------------
+        # Upper FREE unit node constrained by the rails
+        # ---------------------------------------------------------
+
+        upper_node_B = chain.get_node_by_descriptor(
+            f"{upper_unit_index}B"
+        )
+
+        # ---------------------------------------------------------
+        # Candidate gaps
+        # ---------------------------------------------------------
 
         gaps.extend([
-            get_node_segment_gap(node_T, segment_BL, "clockwise"),
-            get_node_segment_gap(node_T, segment_TR, "clockwise"),
-            get_node_segment_gap(node_T, segment_RB, "clockwise"),
-            get_node_segment_gap(node_T, segment_LT, "clockwise"),
+            # Lower top node vs upper FREE struts
+            get_node_segment_gap(
+                lower_node_T,
+                segment_BL,
+                "clockwise"
+            ),
 
-            get_node_segment_gap(node_B, segment_BL, "counterclockwise"),
-            get_node_segment_gap(node_B, segment_RB, "counterclockwise"),
+            get_node_segment_gap(
+                lower_node_T,
+                segment_TR,
+                "clockwise"
+            ),
 
-            get_node_segment_gap(node_L, segment_BL, "counterclockwise"),
-            get_node_segment_gap(node_R, segment_RB, "counterclockwise"),
+            get_node_segment_gap(
+                lower_node_T,
+                segment_RB,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                segment_LT,
+                "clockwise"
+            ),
+
+            # Lower bottom node vs upper FREE bottom struts
+            get_node_segment_gap(
+                lower_node_B,
+                segment_BL,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_B,
+                segment_RB,
+                "counterclockwise"
+            ),
+
+            # Lower side nodes vs upper FREE lower struts
+            get_node_segment_gap(
+                lower_node_L,
+                segment_BL,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_R,
+                segment_RB,
+                "counterclockwise"
+            ),
+
+            # -----------------------------------------------------
+            # Rail gaps
+            #
+            # Upper FREE bottom node vs lower RAILED rails
+            # -----------------------------------------------------
+
+            get_node_segment_gap(
+                upper_node_B,
+                rail_L,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                rail_R,
+                "counterclockwise"
+            )
         ])
 
-    return gaps
+        # ---------------------------------------------------------
+        # Temporary debugging
+        # ---------------------------------------------------------
 
+        left_rail_gap = get_node_segment_gap(
+            upper_node_B,
+            rail_L,
+            "counterclockwise"
+        )
+
+        right_rail_gap = get_node_segment_gap(
+            upper_node_B,
+            rail_R,
+            "clockwise"
+        )
+
+        print(
+            f"\nRail gaps between "
+            f"{upper_node_B.descriptor} and "
+            f"Unit {lower_unit_index} rails:"
+        )
+
+        print(
+            f"  {rail_L.descriptor} -> "
+            f"{upper_node_B.descriptor}: "
+            f"{left_rail_gap.length_mm:.6f} mm"
+        )
+
+        print(
+            f"  {rail_R.descriptor} -> "
+            f"{upper_node_B.descriptor}: "
+            f"{right_rail_gap.length_mm:.6f} mm"
+        )
+
+    return gaps
 
 def get_active_gap_vector(candidate_gaps, tolerance=1e-6, verbose=False):
     active_gap_expressions = []

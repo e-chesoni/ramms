@@ -8,6 +8,8 @@ from ramms.workspace import (
 )
 
 from _fixtures import make_two_unit_chain
+from ramms.core import RAMM_Chain
+from ramms.workspace import find_three_unit_jamming_candidate
 
 
 # offsets are given in mm
@@ -34,20 +36,20 @@ def check_rotation_limits() -> None:
     chain = make_two_unit_chain()
 
     right_zero = find_right_max_rotation(chain, contact_offset=0.0)
-    show_rotation_result(chain, right_zero, "Maximum Right Rotation — Zero Thickness")
+    show_rotation_result(chain, right_zero, "Maximum Right Rotation — No Offset")
 
     NODE_STRUT_CONTACT_OFFSET = (
         NODE_RADIUS
         + STRUT_HALF_WIDTH
     )
     right_thick = find_right_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
-    show_rotation_result(chain, right_thick, "Maximum Right Rotation — Finite Features")
+    show_rotation_result(chain, right_thick, "Maximum Right Rotation with Offset to Match Physical System")
 
     left_zero = find_left_max_rotation(chain, contact_offset=0.0)
-    show_rotation_result(chain, left_zero, "Maximum Left Rotation — Zero Thickness")
+    show_rotation_result(chain, left_zero, "Maximum Left Rotation — No Offset")
 
     left_thick = find_left_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
-    show_rotation_result(chain, left_thick, "Maximum Left Rotation — Finite Features")
+    show_rotation_result(chain, left_thick, "Maximum Left Rotation with Offset to Match Physical System")
 
 
 def check_vertical_limits() -> None:
@@ -69,10 +71,34 @@ def check_vertical_limits() -> None:
             )
 
 
-def main() -> None:
-    check_rotation_limits()
-    check_vertical_limits()
+def test_three_unit_jamming() -> None:
+    three_unit_chain = RAMM_Chain.generate(
+        n_units=3,
+        start_position=(0, 0),
+        offsets=[
+            (0, 8.2),
+            (0, 16)
+        ],
+        node_diameter=2.0
+    )
 
+    result = find_three_unit_jamming_candidate(
+        chain=three_unit_chain,
+        direction="right",
+        node_strut_contact_offset=2.0,
+        segment_segment_contact_offset=2.0
+    )
+
+    plot_geometry(
+        three_unit_chain,
+        plot_title="3-Unit Candidate Jamming Configuration"
+    )
+
+
+def main() -> None:
+    #check_rotation_limits()
+    #check_vertical_limits()
+    test_three_unit_jamming()
 
 if __name__ == "__main__":
     main()
