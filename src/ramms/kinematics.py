@@ -177,6 +177,84 @@ def reposition_railed_unit_from_free_top(
         return float(dy), float(dz)
 
 
+def align_railed_unit_to_free_top(
+    chain,
+    free_unit_index,
+    railed_unit_index
+):
+    """
+    Translate the RAILED unit and everything above it only in the
+    direction perpendicular to its centerline.
+
+    This forces the FREE top node onto the RAILED centerline while
+    allowing the FREE node to slide along the rail direction.
+    """
+    free_unit = chain.units[free_unit_index]
+    railed_unit = chain.units[railed_unit_index]
+
+    free_top = np.asarray(
+        free_unit.top_node.coordinates,
+        dtype=float
+    )
+
+    railed_bottom = np.asarray(
+        railed_unit.bottom_node.coordinates,
+        dtype=float
+    )
+
+    railed_top = np.asarray(
+        railed_unit.top_node.coordinates,
+        dtype=float
+    )
+
+    centerline = railed_top - railed_bottom
+
+    length_squared = np.dot(
+        centerline,
+        centerline
+    )
+
+    if length_squared <= 1e-12:
+        raise InvalidRAMMGeometryError(
+            "RAILED unit has zero-length centerline."
+        )
+
+    # Where does the FREE top project onto the current centerline?
+    s = np.dot(
+        free_top - railed_bottom,
+        centerline
+    ) / length_squared
+
+    projection = (
+        railed_bottom
+        + s * centerline
+    )
+
+    # Vector from the centerline to the FREE top node.
+    #
+    # Importantly, this vector is perpendicular to the centerline.
+    perpendicular_error = (
+        free_top - projection
+    )
+
+    dy, dz = perpendicular_error
+
+    # Shift the RAILED unit and everything above it sideways
+    # just enough to put the FREE top on its centerline.
+    translate_units_from(
+        chain,
+        start_unit_index=railed_unit_index,
+        dy=dy,
+        dz=dz
+    )
+
+    return {
+        "dy": float(dy),
+        "dz": float(dz),
+        "fractional_position": float(s)
+    }
+
+
 def validate_free_railed_centerline_constraint(
         chain,
         free_unit_index,
@@ -210,178 +288,338 @@ def validate_free_railed_centerline_constraint(
 
         return actual_s
 
-def rotate_with_cascade(
-        chain,
-        unit_index,
-        pivot,
-        degrees,
-        penetration_validator=None,
-        tolerance=1e-8,
-        verbose=True
-    ):
-        """
-        Rotate a FREE unit and propagate the resulting motion upward.
 
-        First-version kinematic rule
-        ----------------------------
-        If the FREE unit has a RAILED unit immediately above it:
+def _apply_cascading_rotation(
+    chain,
+    unit_index,
+    pivot,
+    degrees,
+    tolerance=1e-8
+):
+    """
+    Apply exactly the requested rotation and cascade it upward.
 
-        1. Record the FREE top node's fractional position along the
-        RAILED unit's centerline.
-        2. Rotate the FREE unit.
-        3. Preserve the RAILED unit's orientation.
-        4. Translate the RAILED unit and every unit above it so the
-        moved FREE top node retains the same fractional position.
-        5. Validate the centerline constraint.
-        6. Optionally validate nonpenetration.
+    This function does NOT search for a contact limit.
+    """
 
-        Parameters
-        ----------
-        unit_index:
-            Index of the FREE unit being rotated.
+    free_unit = chain.units[unit_index]
 
-        pivot:
-            RAMM_Node or coordinate pair about which the FREE unit
-            rotates.
+    free_unit.rotate(
+        pivot=pivot,
+        degrees=degrees
+    )
 
-        degrees:
-            Counterclockwise rotation in degrees.
+    railed_unit_index = unit_index + 1
 
-        penetration_validator:
-            Optional callable:
+    has_railed_unit_above = (
+        railed_unit_index < len(chain.units)
+        and chain.units[railed_unit_index].unit_type
+        == UnitType.RAILED
+    )
 
-                penetration_validator(chain) -> bool
+    translation = (0.0, 0.0)
+    actual_s = None
 
-            It should return True when the resulting chain is valid
-            and False when penetration occurs.
+    if has_railed_unit_above:
 
-            If validation fails, the entire move is undone.
-
-        tolerance:
-            Numerical tolerance for centerline validation.
-
-        verbose:
-            Print information about the cascading motion.
-        """
-        if not 0 <= unit_index < len(chain.units):
-            raise IndexError(
-                f"Invalid unit index: {unit_index}"
-            )
-
-        free_unit = chain.units[unit_index]
-
-        if free_unit.unit_type != UnitType.FREE:
-            raise ValueError(
-                "rotate_with_cascade() must initially be called "
-                "on a FREE unit."
-            )
-
-        saved_coordinates = chain._save_coordinates()
-
-        railed_unit_index = unit_index + 1
-
-        has_railed_unit_above = (
-            railed_unit_index < len(chain.units)
-            and chain.units[railed_unit_index].unit_type
-            == UnitType.RAILED
+        alignment = align_railed_unit_to_free_top(
+            chain,
+            free_unit_index=unit_index,
+            railed_unit_index=railed_unit_index
         )
 
-        try:
-            if has_railed_unit_above:
-                fractional_position = (
-                    get_fractional_centerline_position(
-                        chain,
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        tolerance=tolerance
-                    )
-                )
-            else:
-                fractional_position = None
+        translation = (
+            alignment["dy"],
+            alignment["dz"]
+        )
 
-            # Rotate only the requested FREE unit first.
-            free_unit.rotate(
-                pivot=pivot,
-                degrees=degrees
-            )
+        actual_s = get_fractional_centerline_position(
+            chain,
+            free_unit_index=unit_index,
+            railed_unit_index=railed_unit_index,
+            tolerance=tolerance
+        )
 
-            translation = (0.0, 0.0)
+    return {
+        "translation": translation,
+        "fractional_position": actual_s,
+        "railed_unit_index": (
+            railed_unit_index
+            if has_railed_unit_above
+            else None
+        )
+    }
 
-            if has_railed_unit_above:
-                translation = (
-                        reposition_railed_unit_from_free_top(
-                        chain,
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        fractional_position=fractional_position
-                    )
-                )
 
-                actual_s = (
-                    validate_free_railed_centerline_constraint(
-                        chain,
-                        free_unit_index=unit_index,
-                        railed_unit_index=railed_unit_index,
-                        expected_fractional_position=(
-                            fractional_position
-                        ),
-                        tolerance=tolerance
-                    )
-                )
-            else:
-                actual_s = None
+def rotate_with_cascade(
+    chain,
+    unit_index,
+    pivot,
+    degrees,
+    constraint_validator,
+    angle_tolerance=1e-5,
+    tolerance=1e-8,
+    verbose=True
+):
+    """
+    Attempt a cascading rotation about an arbitrary pivot.
 
-            # Let the existing contact framework decide whether
-            # the new configuration penetrates.
-            if penetration_validator is not None:
-                is_valid = penetration_validator(chain)
+    The chain follows the requested motion until the first physical
+    or geometric constraint prevents further motion.
 
-                if not is_valid:
-                    raise InvalidRAMMGeometryError(
-                        "Cascading rotation caused penetration."
-                    )
+    If the full requested rotation is valid, the full motion is applied.
 
-        except Exception:
-            chain._restore_coordinates(saved_coordinates)
-            raise
+    If the full requested rotation is invalid, the method uses bisection
+    to find the largest valid rotation between 0 and the requested angle.
+
+    Parameters
+    ----------
+    chain:
+        RAMM_Chain being transformed.
+
+    unit_index:
+        Index of the FREE unit being rotated.
+
+    pivot:
+        RAMM_Node or (y, z) coordinate pair about which the FREE unit
+        attempts to rotate.
+
+    degrees:
+        Requested counterclockwise rotation in degrees.
+
+    constraint_validator:
+        Callable with signature:
+
+            constraint_validator(chain) -> bool
+
+        Returns True when the resulting configuration is physically valid
+        and False when penetration or another forbidden condition occurs.
+
+    angle_tolerance:
+        Resolution used when searching for the contact-limited rotation.
+
+    tolerance:
+        Numerical tolerance used by the cascading geometry helpers.
+
+    verbose:
+        Print information about the resulting motion.
+    """
+
+    # ---------------------------------------------------------
+    # Validate requested unit
+    # ---------------------------------------------------------
+
+    if not 0 <= unit_index < len(chain.units):
+        raise IndexError(
+            f"Invalid unit index: {unit_index}"
+        )
+
+    free_unit = chain.units[unit_index]
+
+    if free_unit.unit_type != UnitType.FREE:
+        raise ValueError(
+            "rotate_with_cascade() must be called on a FREE unit."
+        )
+
+    if degrees == 0:
+        return {
+            "success": True,
+            "requested_degrees": 0.0,
+            "actual_degrees": 0.0,
+            "contact_limited": False,
+            "translation": (0.0, 0.0),
+            "fractional_position": None
+        }
+
+    # Save the state at the beginning of THIS motion.
+    starting_coordinates = chain._save_coordinates()
+
+    # ---------------------------------------------------------
+    # 1. Try the full requested motion
+    # ---------------------------------------------------------
+
+    try:
+        full_result = _apply_cascading_rotation(
+            chain,
+            unit_index=unit_index,
+            pivot=pivot,
+            degrees=degrees,
+            tolerance=tolerance
+        )
+
+        full_motion_valid = constraint_validator(
+            chain
+        )
+
+    except InvalidRAMMGeometryError:
+        # Examples:
+        # - FREE node moves beyond the finite rail span
+        # - centerline constraint becomes geometrically impossible
+        #
+        # This does not mean the function should crash.
+        # It means the requested angle is beyond the allowed motion.
+        full_motion_valid = False
+        full_result = None
+
+    # ---------------------------------------------------------
+    # 2. Full motion is valid
+    # ---------------------------------------------------------
+
+    if full_motion_valid:
 
         if verbose:
             print(
-                f"Rotated FREE Unit {unit_index} by "
-                f"{degrees:.6f}°."
+                f"Full requested rotation is valid."
             )
-
-            if has_railed_unit_above:
-                dy, dz = translation
-
-                print(
-                    f"Translated RAILED Unit "
-                    f"{railed_unit_index} and all units above it:"
-                )
-                print(f"  dy = {dy:.6f} mm")
-                print(f"  dz = {dz:.6f} mm")
-                print(
-                    f"Preserved fractional centerline position: "
-                    f"s = {actual_s:.6f}"
-                )
-            else:
-                print(
-                    "No RAILED unit exists immediately above; "
-                    "no upward cascade was required."
-                )
+            print(
+                f"Requested rotation: {degrees:.6f}°"
+            )
+            print(
+                f"Actual rotation:    {degrees:.6f}°"
+            )
 
         return {
             "success": True,
-            "rotated_unit_index": unit_index,
-            "degrees": degrees,
-            "railed_unit_index": (
-                railed_unit_index
-                if has_railed_unit_above
-                else None
-            ),
-            "fractional_position": actual_s,
-            "translation": translation
+            "requested_degrees": degrees,
+            "actual_degrees": degrees,
+            "contact_limited": False,
+            "translation": full_result["translation"],
+            "fractional_position": (
+                full_result["fractional_position"]
+            )
         }
+
+    # ---------------------------------------------------------
+    # 3. Full motion is invalid
+    #
+    # Restore the chain to the state before this attempted motion.
+    # ---------------------------------------------------------
+
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    # alpha represents the fraction of the requested motion:
+    #
+    # alpha = 0 -> starting configuration
+    # alpha = 1 -> full requested rotation
+    #
+    # We know:
+    # alpha = 0 is valid
+    # alpha = 1 is invalid
+    valid_alpha = 0.0
+    invalid_alpha = 1.0
+
+    # ---------------------------------------------------------
+    # 4. Binary search for the last valid configuration
+    # ---------------------------------------------------------
+
+    while (
+        abs(invalid_alpha - valid_alpha)
+        * abs(degrees)
+        > angle_tolerance
+    ):
+
+        trial_alpha = (
+            valid_alpha + invalid_alpha
+        ) / 2.0
+
+        trial_degrees = (
+            trial_alpha * degrees
+        )
+
+        # Every trial must begin from the exact same starting state.
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+        try:
+            _apply_cascading_rotation(
+                chain,
+                unit_index=unit_index,
+                pivot=pivot,
+                degrees=trial_degrees,
+                tolerance=tolerance
+            )
+
+            trial_valid = constraint_validator(
+                chain
+            )
+
+        except InvalidRAMMGeometryError:
+            trial_valid = False
+
+        if trial_valid:
+            valid_alpha = trial_alpha
+
+        else:
+            invalid_alpha = trial_alpha
+
+    # ---------------------------------------------------------
+    # 5. Apply the final valid rotation
+    # ---------------------------------------------------------
+
+    actual_degrees = (
+        valid_alpha * degrees
+    )
+
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    final_result = _apply_cascading_rotation(
+        chain,
+        unit_index=unit_index,
+        pivot=pivot,
+        degrees=actual_degrees,
+        tolerance=tolerance
+    )
+
+    # Sanity check the final state.
+    final_valid = constraint_validator(
+        chain
+    )
+
+    if not final_valid:
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+        raise InvalidRAMMGeometryError(
+            "Could not find a valid contact-limited "
+            "cascading rotation."
+        )
+
+    # ---------------------------------------------------------
+    # 6. Report result
+    # ---------------------------------------------------------
+
+    if verbose:
+        print(
+            f"Requested rotation: "
+            f"{degrees:.6f}°"
+        )
+        print(
+            f"Rotation limited by contact/constraint: "
+            f"{actual_degrees:.6f}°"
+        )
+        print(
+            f"Motion fraction completed: "
+            f"{valid_alpha:.6f}"
+        )
+
+    return {
+        "success": True,
+        "requested_degrees": degrees,
+        "actual_degrees": actual_degrees,
+        "contact_limited": True,
+        "translation": (
+            final_result["translation"]
+        ),
+        "fractional_position": (
+            final_result["fractional_position"]
+        )
+    }
 
 def set_two_unit_configuration(chain, theta, z):
     pass

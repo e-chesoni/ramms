@@ -77,8 +77,18 @@ def get_nodes_left_to_right(segment, tolerance=1e-9):
 
     return segment.node_2, segment.node_1
 
-
-def parallel_segments_touch(A, B, C, D, tolerance=1e-6): # TODO: make this private (with a leading _)
+# for segment-segment gap method
+def _parallel_segments_overlap(
+    A,
+    B,
+    C,
+    D,
+    tolerance=1e-6
+):
+    """
+    Check whether two parallel finite segments overlap
+    along their common tangent direction.
+    """
     A = np.asarray(A, dtype=float)
     B = np.asarray(B, dtype=float)
     C = np.asarray(C, dtype=float)
@@ -88,35 +98,32 @@ def parallel_segments_touch(A, B, C, D, tolerance=1e-6): # TODO: make this priva
     length = np.linalg.norm(u)
 
     if length <= tolerance:
-        raise ValueError("Segment A-B has zero length.")
+        raise ValueError(
+            "Segment A-B has zero length."
+        )
 
     tangent = u / length
 
-    # Perpendicular distance between the supporting lines
-    v = C - A
-    perpendicular_distance = abs(
-        u[0] * v[1] - u[1] * v[0]
-    ) / length
-
-    if perpendicular_distance > tolerance:
-        return False
-
-    # Project all endpoints onto segment 1's tangent direction
+    # Project all four endpoints onto the common tangent axis.
     a_proj = np.dot(A, tangent)
     b_proj = np.dot(B, tangent)
     c_proj = np.dot(C, tangent)
     d_proj = np.dot(D, tangent)
 
-    segment_1_min, segment_1_max = sorted((a_proj, b_proj))
-    segment_2_min, segment_2_max = sorted((c_proj, d_proj))
-
-    # Amount by which the projected intervals overlap
-    overlap = min(segment_1_max, segment_2_max) - max(
-        segment_1_min,
-        segment_2_min
+    segment_1_min, segment_1_max = sorted(
+        (a_proj, b_proj)
     )
 
-    return overlap >= -tolerance
+    segment_2_min, segment_2_max = sorted(
+        (c_proj, d_proj)
+    )
+
+    overlap = (
+        min(segment_1_max, segment_2_max)
+        - max(segment_1_min, segment_2_min)
+    )
+
+    return overlap >= -tolerance, overlap
 
 
 def cross_2d(a, b): # TODO: make this private (with a leading _)
@@ -259,6 +266,16 @@ def get_segment_segment_distance(
     top_unit_segment: RAMM_Strut,
     tolerance=1e-6
 ):
+    """
+    Determine whether two finite segments are parallel and,
+    if so, whether they are touching.
+
+    Motion-blocking contact requires:
+        1. segments are parallel
+        2. supporting-line distance is approximately zero
+        3. finite segment projections overlap
+    """
+
     A = np.asarray(
         bottom_unit_segment.node_1.coordinates,
         dtype=float
@@ -283,16 +300,19 @@ def get_segment_segment_distance(
     length_v = np.linalg.norm(v)
 
     if length_u <= tolerance or length_v <= tolerance:
-        raise ValueError("Cannot evaluate a zero-length segment.")
+        raise ValueError(
+            "Cannot evaluate a zero-length segment."
+        )
 
-    # Parallel when the direction-vector cross product is approximately zero.
-    parallel = math.isclose(
-        cross_2d(u, v),
-        0.0,
-        abs_tol=tolerance
-    )
+    # ---------------------------------------------------------
+    # 1. Are the segments parallel?
+    # ---------------------------------------------------------
 
-    print(f"Segments are parallel: {parallel}")
+    parallel_measure = abs(
+        cross_2d(u, v)
+    ) / (length_u * length_v)
+
+    parallel = parallel_measure <= tolerance
 
     if not parallel:
         return {
@@ -302,38 +322,34 @@ def get_segment_segment_distance(
             "touching": False
         }
 
-    # Distance between the two parallel supporting lines.
+    # ---------------------------------------------------------
+    # 2. How far apart are the parallel supporting lines?
+    # ---------------------------------------------------------
+
     perpendicular_distance = abs(
         cross_2d(u, C - A)
     ) / length_u
 
-    # Project both segments onto the unit tangent of segment A-B.
-    tangent = u / length_u
+    # ---------------------------------------------------------
+    # 3. Do the finite segments overlap?
+    # ---------------------------------------------------------
 
-    a_proj = np.dot(A, tangent)
-    b_proj = np.dot(B, tangent)
-    c_proj = np.dot(C, tangent)
-    d_proj = np.dot(D, tangent)
-
-    bottom_min, bottom_max = sorted((a_proj, b_proj))
-    top_min, top_max = sorted((c_proj, d_proj))
-
-    overlap = min(bottom_max, top_max) - max(
-        bottom_min,
-        top_min
+    overlapping, overlap = _parallel_segments_overlap(
+        A,
+        B,
+        C,
+        D,
+        tolerance=tolerance
     )
+
+    # ---------------------------------------------------------
+    # 4. Are they actually touching?
+    # ---------------------------------------------------------
 
     touching = (
         perpendicular_distance <= tolerance
-        and overlap >= -tolerance
+        and overlapping
     )
-
-    print(
-        f"Perpendicular distance: "
-        f"{perpendicular_distance:.6f}"
-    )
-    print(f"Projected overlap: {overlap:.6f}")
-    print(f"Segments are touching: {touching}")
 
     return {
         "parallel": parallel,

@@ -25,6 +25,29 @@ from dataclasses import dataclass
 from scipy.optimize import root
 from scipy.optimize import least_squares
 
+from ramms.symbolic import get_candidate_gaps
+
+
+def configuration_is_valid(
+    chain,
+    contact_tolerance=1e-6
+):
+    """
+    Return False if any physical member penetrates another.
+
+    Contact is allowed.
+    Penetration is not.
+    """
+
+    candidate_gaps = get_candidate_gaps(chain)
+
+    for gap in candidate_gaps:
+
+        if gap.result.length_mm < -contact_tolerance:
+            return False
+
+    return True
+
 
 def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
     """
