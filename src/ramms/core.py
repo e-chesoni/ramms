@@ -574,7 +574,9 @@ class RAMM_Unit:
         # ---------------------------------------------------------
 
         if unit_type == UnitType.RAILED:
-            rail_half_spacing = node_diameter / 2
+            rail_half_spacing = (
+                node_diameter + strut_width
+            ) / 2
 
             if rail_half_spacing >= diamond_half_width:
                 raise InvalidRAMMGeometryError(

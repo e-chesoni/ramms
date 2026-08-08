@@ -7,6 +7,7 @@ from _fixtures import (
     make_two_unit_chain,
     make_three_unit_chain
 )
+from ramms.core import RAMM_Chain
 from ramms.plotting import plot_geometry
 from ramms.symbolic import (
     get_candidate_gaps, 
@@ -35,11 +36,11 @@ def find_active_gaps_2unit_chain() -> None:
         pivot=PIVOT,
         degrees=ROTATION_DEG,
     )
-
+    tol = ((chain.node_diameter/2) + (chain.strut_width/2))
     candidate_gaps = get_candidate_gaps(chain)
     active_gap_vector = get_active_gap_vector(
         candidate_gaps,
-        tolerance=0.01,
+        contact_tolerance=tol,
         verbose=True,
     )
 
@@ -75,36 +76,46 @@ def check_three_unit_mobility() -> None:
     # 1. Create 3-unit chain
     # ---------------------------------------------------------
 
-    chain = make_three_unit_chain(
-        offsets=(
-            (0, 8.2),
-            (0, 14)
-        )
-    )
-
     # ---------------------------------------------------------
     # 2. Move chain to candidate jamming configuration
     # ---------------------------------------------------------
 
+    three_unit_chain = RAMM_Chain.generate(
+        n_units=3,
+        start_position=(0, 0),
+        offsets=[
+            (0, 8.2),
+            (0, 16)
+        ],
+        node_diameter=2.0,
+        strut_width=2.0
+    )
+
     result = find_three_unit_jamming_candidate(
-        chain=chain,
+        chain=three_unit_chain,
         direction="right",
-        node_strut_contact_offset=2.0,
-        segment_segment_contact_offset=2.0,
-        verbose=True
     )
 
     # ---------------------------------------------------------
     # 3. Find candidate / active gaps
     # ---------------------------------------------------------
-
+    # TODO: this needs to evaluate gaps taking tolerance into account 
+        # so if the node diameter is 2mm, gaps should be triggered if 
+        # length < [(node_diameter/2) + (strut diameter/2)]
+        # these parameters should be taken from the chain
     candidate_gaps = get_candidate_gaps(
-        chain
+        three_unit_chain
     )
+    # TODO: tolerance needs to be [(node_diameter/2) + (strut diameter/2)]
+    # tolerance is half the node diameter plus half the strut diameter
+    # (to resemble the contact location IRL)
 
     active_gap_vector = get_active_gap_vector(
         candidate_gaps,
-        tolerance=0.01,
+        contact_offset=(
+            three_unit_chain.node_strut_contact_offset
+        ),
+        contact_tolerance=1e-6,
         verbose=True
     )
 
@@ -126,7 +137,7 @@ def check_three_unit_mobility() -> None:
     )
 
     plot_geometry(
-        chain,
+        three_unit_chain,
         plot_title="3-Unit Candidate Jamming Configuration",
         xlim=(-15, 15),
         ylim=(-5, 45),

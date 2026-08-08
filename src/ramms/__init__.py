@@ -10,7 +10,7 @@ from .core import (
 
 from .contact import (
     Gap,
-    GapResult,
+    NodeSegmentGapResult,
     get_node_segment_gap,
     get_segment_segment_distance,
 )

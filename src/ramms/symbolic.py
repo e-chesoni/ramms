@@ -26,7 +26,7 @@ from scipy.optimize import root
 from scipy.optimize import least_squares
 
 
-from .contact import get_node_segment_gap
+from .contact import get_node_segment_gap, get_segment_segment_gap
 
 @dataclass
 class SymbolicGap:
@@ -141,6 +141,66 @@ def get_node_segment_symbolic_gap(node, segment, orientation):
     )
 
 
+def get_segment_segment_symbolic_gap(
+    segment_1,
+    segment_2
+):
+    """
+    Return the symbolic signed perpendicular gap between
+    two parallel segment centerlines.
+
+    Assumes the relevant finite segments are already known
+    to be parallel and overlapping.
+    """
+
+    A_y, A_z = sp.symbols(
+        f"{segment_1.node_1.descriptor}_y "
+        f"{segment_1.node_1.descriptor}_z",
+        real=True
+    )
+
+    B_y, B_z = sp.symbols(
+        f"{segment_1.node_2.descriptor}_y "
+        f"{segment_1.node_2.descriptor}_z",
+        real=True
+    )
+
+    C_y, C_z = sp.symbols(
+        f"{segment_2.node_1.descriptor}_y "
+        f"{segment_2.node_1.descriptor}_z",
+        real=True
+    )
+
+    A = sp.Matrix([A_y, A_z])
+    B = sp.Matrix([B_y, B_z])
+    C = sp.Matrix([C_y, C_z])
+
+    u = B - A
+    v = C - A
+
+    segment_length = sp.sqrt(
+        u.dot(u)
+    )
+
+    signed_gap = (
+        u[0] * v[1]
+        - u[1] * v[0]
+    ) / segment_length
+
+    return SymbolicGap(
+        A=A,
+        B=B,
+        P=C,
+        u=u,
+        v=v,
+        t=None,
+        Q=None,
+        gap_vector=None,
+        gap_magnitude=None,
+        signed_gap=sp.simplify(signed_gap)
+    )
+
+
 def get_candidate_gaps(chain, verbose=True):
     """
     Return candidate node-segment gaps for RAILED-FREE unit pairs.
@@ -164,30 +224,33 @@ def get_candidate_gaps(chain, verbose=True):
     gaps = []
 
     # Evaluate each RAILED-FREE pair.
-    for lower_unit_index in range(
+    for base_unit_index in range(
         0,
         len(chain.units) - 1,
         2
     ):
-        upper_unit_index = lower_unit_index + 1
+        lower_unit_index = base_unit_index
+        upper_unit_index = base_unit_index + 1
+
+        skip_unit_index = base_unit_index + 2
 
         # ---------------------------------------------------------
         # Upper FREE unit diamond struts
         # ---------------------------------------------------------
 
-        segment_BL = chain.get_segment_by_descriptor(
+        upper_unit_segment_BL = chain.get_segment_by_descriptor(
             f"{upper_unit_index}B{upper_unit_index}L"
         )
 
-        segment_TR = chain.get_segment_by_descriptor(
+        upper_unit_segment_TR = chain.get_segment_by_descriptor(
             f"{upper_unit_index}T{upper_unit_index}R"
         )
 
-        segment_RB = chain.get_segment_by_descriptor(
+        upper_unit_segment_RB = chain.get_segment_by_descriptor(
             f"{upper_unit_index}R{upper_unit_index}B"
         )
 
-        segment_LT = chain.get_segment_by_descriptor(
+        upper_unit_segment_LT = chain.get_segment_by_descriptor(
             f"{upper_unit_index}L{upper_unit_index}T"
         )
 
@@ -241,51 +304,51 @@ def get_candidate_gaps(chain, verbose=True):
             # Lower top node vs upper FREE struts
             get_node_segment_gap(
                 lower_node_T,
-                segment_BL,
+                upper_unit_segment_BL,
                 "clockwise"
             ),
 
             get_node_segment_gap(
                 lower_node_T,
-                segment_TR,
+                upper_unit_segment_TR,
                 "clockwise"
             ),
 
             get_node_segment_gap(
                 lower_node_T,
-                segment_RB,
+                upper_unit_segment_RB,
                 "clockwise"
             ),
 
             get_node_segment_gap(
                 lower_node_T,
-                segment_LT,
+                upper_unit_segment_LT,
                 "clockwise"
             ),
 
             # Lower bottom node vs upper FREE bottom struts
             get_node_segment_gap(
                 lower_node_B,
-                segment_BL,
+                upper_unit_segment_BL,
                 "counterclockwise"
             ),
 
             get_node_segment_gap(
                 lower_node_B,
-                segment_RB,
+                upper_unit_segment_RB,
                 "counterclockwise"
             ),
 
             # Lower side nodes vs upper FREE lower struts
             get_node_segment_gap(
                 lower_node_L,
-                segment_BL,
+                upper_unit_segment_BL,
                 "counterclockwise"
             ),
 
             get_node_segment_gap(
                 lower_node_R,
-                segment_RB,
+                upper_unit_segment_RB,
                 "counterclockwise"
             ),
 
@@ -342,42 +405,214 @@ def get_candidate_gaps(chain, verbose=True):
                 f"{right_rail_gap.length_mm:.6f} mm"
             )
 
+    # TODO: Evaluate skip level gaps
+    for base_unit_index in range(
+        0,
+        len(chain.units) - 2,
+        2
+    ):
+        if verbose:
+            print("Evaluating skip-level gaps")
+
+        lower_unit_index = base_unit_index
+        upper_unit_index = base_unit_index + 2
+
+        skip_unit_index = base_unit_index + 2
+
+        # ---------------------------------------------------------
+        # Lower railed unit struts
+        # ---------------------------------------------------------
+
+        lower_unit_segment_BL = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}B{lower_unit_index}L"
+        )
+
+        lower_unit_segment_TR = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}T{lower_unit_index}R"
+        )
+
+        lower_unit_segment_RB = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}R{lower_unit_index}B"
+        )
+
+        lower_unit_segment_LT = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}L{lower_unit_index}T"
+        )
+        if verbose:
+            print(f"Skip level lower unit segments: {lower_unit_segment_BL}, {lower_unit_segment_TR}, {lower_unit_segment_RB}, {lower_unit_segment_LT}")
+
+        # ---------------------------------------------------------
+        # Upper railed unit struts
+        # ---------------------------------------------------------
+
+        upper_unit_segment_BL = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}B{upper_unit_index}L"
+        )
+
+        upper_unit_segment_TR = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}T{upper_unit_index}R"
+        )
+
+        upper_unit_segment_RB = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}R{upper_unit_index}B"
+        )
+
+        upper_unit_segment_LT = chain.get_segment_by_descriptor(
+            f"{upper_unit_index}L{upper_unit_index}T"
+        )
+        if verbose:
+            print(f"Skip level upper unit segments: {upper_unit_segment_BL}, {upper_unit_segment_TR}, {upper_unit_segment_RB}, {upper_unit_segment_LT}")
+
+        skip_level_gap_right = get_segment_segment_gap(
+            lower_unit_segment_TR,
+            upper_unit_segment_BL,
+            contact_offset=chain.segment_segment_contact_offset,
+            verbose=True
+        )
+        """
+        skip_level_gap_left = get_segment_segment_gap(
+            lower_unit_segment_LT,
+            upper_unit_segment_RB,
+            contact_offset=chain.segment_segment_contact_offset,
+            verbose=True
+        )        
+        """
+        if verbose:
+            print(f"Skip level gap with right rotation: {skip_level_gap_right.length_mm}")
+            #print(f"Skip level gap with right rotation: {skip_level_gap_left.length_mm}")
+
+        gaps.extend([
+            # TODO: write method to get segment-segment gaps
+            skip_level_gap_right
+        ])
+        
     return gaps
 
-def get_active_gap_vector(candidate_gaps, tolerance=1e-6, verbose=False):
+
+def get_active_gap_vector(
+    candidate_gaps,
+    contact_offset=0.0,
+    contact_tolerance=1e-6,
+    verbose=False
+):
     active_gap_expressions = []
 
+    print(
+        f"Evaluating gaps with contact offset: "
+        f"{contact_offset} mm\n"
+        f"Numerical contact tolerance: "
+        f"{contact_tolerance} mm"
+    )
+
     for candidate in candidate_gaps:
-        gap_length_mm = candidate.result.length_mm
+
+        gap_length_mm = (
+            candidate.result.length_mm
+        )
+
+        # Physical clearance between the bodies.
+        clearance = (
+            gap_length_mm
+            - contact_offset
+        )
+
+        # ---------------------------------------------------------
+        # Determine what segment_1 is contacting
+        # ---------------------------------------------------------
+
+        if candidate.node is not None:
+            contact_object = candidate.node
+
+        elif candidate.segment_2 is not None:
+            contact_object = candidate.segment_2
+
+        else:
+            contact_object = "UNKNOWN"
 
         if verbose:
-            if gap_length_mm < -tolerance:
+
+            if clearance < -contact_tolerance:
+
                 print(
-                    f"❌ PENETRATING! {candidate.segment_1} and {candidate.node}\n"
-                    f"Gap: {gap_length_mm:.6f} mm"
+                    f"❌ PENETRATING! "
+                    f"{candidate.segment_1} and "
+                    f"{contact_object}\n"
+                    f"Centerline gap: "
+                    f"{gap_length_mm:.6f} mm\n"
+                    f"Clearance: "
+                    f"{clearance:.6f} mm"
                 )
 
-            elif gap_length_mm <= tolerance:
+            elif math.isclose(
+                clearance,
+                0.0,
+                abs_tol=contact_tolerance
+            ):
+
                 print(
-                    f"✅ CONTACT: {candidate.segment_1} and {candidate.node}\n"
-                    f"Gap: {gap_length_mm:.6f} mm"
+                    f"✅ CONTACT: "
+                    f"{candidate.segment_1} and "
+                    f"{contact_object}\n"
+                    f"Centerline gap: "
+                    f"{gap_length_mm:.6f} mm\n"
+                    f"Clearance: "
+                    f"{clearance:.6f} mm"
                 )
 
             else:
+
                 print(
-                    f"Gap between {candidate.segment_1} and {candidate.node} is greater than 0.\n"
-                    f"Gap: {gap_length_mm:.6f} mm"
+                    f"Gap between "
+                    f"{candidate.segment_1} and "
+                    f"{contact_object} is open.\n"
+                    f"Centerline gap: "
+                    f"{gap_length_mm:.6f} mm\n"
+                    f"Clearance: "
+                    f"{clearance:.6f} mm"
                 )
 
-        if math.isclose(gap_length_mm, 0.0, abs_tol=tolerance):
-            symbolic_gap = get_node_segment_symbolic_gap(
-                candidate.node,
-                candidate.segment_1,
-                candidate.orientation
-            )
-            active_gap_expressions.append(symbolic_gap.signed_gap)
-    
-    active_gap_vector = sp.Matrix(active_gap_expressions)
+        # Add only actual contact constraints.
+        if math.isclose(
+            clearance,
+            0.0,
+            abs_tol=contact_tolerance
+        ):
+            # ---------------------------------------------
+            # Node-segment active gap
+            # ---------------------------------------------
+            if candidate.node is not None:
+                symbolic_gap = get_node_segment_symbolic_gap(
+                    candidate.node,
+                    candidate.segment_1,
+                    candidate.orientation
+                )
+
+                active_gap_expressions.append(
+                    symbolic_gap.signed_gap
+                )
+
+            # ---------------------------------------------
+            # Segment-segment active gap
+            # ---------------------------------------------
+            elif candidate.segment_2 is not None:
+                symbolic_gap = get_segment_segment_symbolic_gap(
+                    candidate.segment_1,
+                    candidate.segment_2
+                )
+
+                active_gap_expressions.append(
+                    symbolic_gap.signed_gap
+                )
+
+            else:
+                raise ValueError(
+                    f"Gap {candidate.name} is neither "
+                    "node-segment nor segment-segment."
+                )
+
+    active_gap_vector = sp.Matrix(
+        active_gap_expressions
+    )
 
     if verbose:
         sp.pprint(active_gap_vector)

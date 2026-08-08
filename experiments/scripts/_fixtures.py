@@ -9,7 +9,7 @@ def make_two_unit_chain(node_diameter: float = 2.0) -> RAMM_Chain:
     unit_1_bottom_unit_offset = (0,10)
     node_diameter = node_diameter
 
-    print(f"Making 2 unit chain:\n"
+    print(f"Making {total_units} unit chain:\n"
         f"Total units: {total_units}\n"
         f"0B starting position: {starting_pos_0B}\n"
         f"1B offset (starting position): {unit_1_bottom_unit_offset}\n"
@@ -29,7 +29,7 @@ def make_three_unit_chain(node_diameter: float = 2.0, offsets=((0, 8.2), (0, 14)
     starting_pos_0B = (0,0)
     node_diameter = node_diameter
 
-    print(f"Making 2 unit chain:\n"
+    print(f"Making {total_units} unit chain:\n"
         f"Total units: {total_units}\n"
         f"0B starting position: {starting_pos_0B}\n"
         f"1B starting position: {offsets[0]}\n"

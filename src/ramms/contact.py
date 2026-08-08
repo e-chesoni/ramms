@@ -18,11 +18,17 @@ from .core import *
 # Data Structures
 # ============================================================================
 @dataclass
-class GapResult:
+class NodeSegmentGapResult:
     length_mm: float
     projection_coordinate: tuple[float, float]
     node_coordinate: tuple[float, float]
 
+@dataclass
+class SegmentSegmentGapResult:
+    length_mm: float
+    overlap_mm: float
+    parallel: bool
+    touching: bool
 
 class Gap:
     def __init__(
@@ -209,7 +215,7 @@ def get_node_segment_distance(node, segment, orientation):
                 else -unsigned_gap
             )
 
-    return GapResult(
+    return NodeSegmentGapResult(
         length_mm=signed_gap,
         projection_coordinate=(qy, qz),
         node_coordinate=(py, pz),
@@ -358,3 +364,191 @@ def get_segment_segment_distance(
         "overlap": overlap,
         "touching": touching
     }
+
+
+def get_segment_segment_gap(
+    bottom_unit_segment,
+    top_unit_segment,
+    contact_offset=0.0,
+    tolerance=1e-6,
+    verbose=False
+):
+    """
+    Calculate the physical gap between two parallel finite segments.
+
+    A segment-segment contact is considered possible only when:
+
+        1. the segments are parallel
+        2. their finite projections overlap
+
+    The returned gap is:
+
+        perpendicular centerline distance - contact_offset
+
+    Therefore:
+
+        gap > 0:
+            segments are separated
+
+        gap = 0:
+            physical contact
+
+        gap < 0:
+            physical penetration
+
+    Parameters
+    ----------
+    bottom_unit_segment:
+        First segment.
+
+    top_unit_segment:
+        Second segment.
+
+    contact_offset:
+        Required centerline separation at physical contact.
+
+        For two equal-width struts:
+
+            contact_offset = strut_width
+
+    tolerance:
+        Numerical tolerance.
+
+    verbose:
+        Print information about the gap.
+    """
+
+    # ---------------------------------------------------------
+    # Get the geometric relationship between the segments
+    # ---------------------------------------------------------
+
+    distance_result = get_segment_segment_distance(
+        bottom_unit_segment=bottom_unit_segment,
+        top_unit_segment=top_unit_segment,
+        tolerance=tolerance
+    )
+
+    # ---------------------------------------------------------
+    # Segment-segment gap only makes sense here when the
+    # segments are parallel.
+    # ---------------------------------------------------------
+
+    if not distance_result["parallel"]:
+        print(
+            f"⚠️ WARNING: Cannot calculate parallel segment gap between "
+            f"{bottom_unit_segment.descriptor} and "
+            f"{top_unit_segment.descriptor}: "
+            "segments are not parallel."
+        )
+
+        gap_name = (
+            f"gap_{bottom_unit_segment.descriptor}_"
+            f"{top_unit_segment.descriptor}"
+        )
+        
+        gap_result = SegmentSegmentGapResult(
+            length_mm=math.inf,
+            overlap_mm=None,
+            parallel=False,
+            touching=False
+        )
+    
+        return Gap(
+            name=gap_name,
+            segment_1=bottom_unit_segment,
+            segment_2=top_unit_segment,
+            node=None,
+            orientation=None,
+            result=gap_result
+        )
+
+    # ---------------------------------------------------------
+    # The finite segments must overlap in the tangent direction
+    # for this to represent a possible segment-segment contact.
+    # ---------------------------------------------------------
+
+    overlap = distance_result["overlap"]
+
+    if overlap < -tolerance:
+        raise InvalidRAMMGeometryError(
+            f"Cannot calculate contact gap between "
+            f"{bottom_unit_segment.descriptor} and "
+            f"{top_unit_segment.descriptor}: "
+            "finite segments do not overlap."
+        )
+
+    # ---------------------------------------------------------
+    # Convert centerline distance into physical clearance
+    # ---------------------------------------------------------
+
+    perpendicular_distance = (
+        distance_result["perpendicular_distance"]
+    )
+
+    gap_length_mm = perpendicular_distance
+
+    # ---------------------------------------------------------
+    # Package result
+    # ---------------------------------------------------------
+
+    gap_result = SegmentSegmentGapResult(
+        length_mm=gap_length_mm,
+        overlap_mm=overlap,
+        parallel=True,
+        touching=math.isclose(
+            gap_length_mm,
+            0.0,
+            abs_tol=tolerance
+        )
+    )
+
+    gap_name = (
+        f"gap_{bottom_unit_segment.descriptor}_"
+        f"{top_unit_segment.descriptor}"
+    )
+
+    gap = Gap(
+        name=gap_name,
+        segment_1=bottom_unit_segment,
+        segment_2=top_unit_segment,
+        node=None,
+        orientation=None,
+        result=gap_result
+    )
+
+    # ---------------------------------------------------------
+    # Optional reporting
+    # ---------------------------------------------------------
+
+    if verbose:
+
+        if gap.length_mm < -tolerance:
+            print(
+                f"Invalid configuration\n"
+                f"Segments "
+                f"{bottom_unit_segment.descriptor} and "
+                f"{top_unit_segment.descriptor}\n"
+                f"Gap: {gap.length_mm:.6f} mm"
+            )
+
+        elif math.isclose(
+            gap.length_mm,
+            0.0,
+            abs_tol=tolerance
+        ):
+            print(
+                f"Contact between "
+                f"{bottom_unit_segment.descriptor} and "
+                f"{top_unit_segment.descriptor}"
+            )
+
+        else:
+            print(
+                f"Segments "
+                f"{bottom_unit_segment.descriptor} and "
+                f"{top_unit_segment.descriptor} "
+                f"are not in contact.\n"
+                f"Gap: {gap.length_mm:.6f} mm"
+            )
+
+    return gap

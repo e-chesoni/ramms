@@ -14,15 +14,6 @@ from ramms.workspace import (
 )
 
 
-# offsets are given in mm
-NODE_DIAMETER = 2.0
-STRUT_WIDTH = 2.0
-VERTICAL_CONTACT_OFFSET = 2.0
-
-NODE_RADIUS = NODE_DIAMETER / 2
-STRUT_HALF_WIDTH = STRUT_WIDTH / 2
-
-
 def test_find_max_rotation(chain_units:int) -> None:
     if chain_units == 2:
         chain = make_two_unit_chain()
@@ -62,25 +53,22 @@ def check_rotation_limits() -> None:
     right_zero = find_right_max_rotation(chain, contact_offset=0.0)
     show_rotation_result(chain, right_zero, "Maximum Right Rotation — No Offset")
 
-    NODE_STRUT_CONTACT_OFFSET = (
-        NODE_RADIUS
-        + STRUT_HALF_WIDTH
-    )
-    right_thick = find_right_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
+    rotation_contact_offset = ((chain.node_diameter/2) + (chain.strut_width/2))
+    right_thick = find_right_max_rotation(chain, contact_offset=rotation_contact_offset)
     show_rotation_result(chain, right_thick, "Maximum Right Rotation with Offset to Match Physical System")
 
     left_zero = find_left_max_rotation(chain, contact_offset=0.0)
     show_rotation_result(chain, left_zero, "Maximum Left Rotation — No Offset")
 
-    left_thick = find_left_max_rotation(chain, contact_offset=NODE_STRUT_CONTACT_OFFSET)
+    left_thick = find_left_max_rotation(chain, contact_offset=rotation_contact_offset)
     show_rotation_result(chain, left_thick, "Maximum Left Rotation with Offset to Match Physical System")
 
 
 def check_vertical_limits() -> None:
     chain = make_two_unit_chain()
-
+    vertical_contact_offset = (chain.node_diameter/2)
     for direction, label in (("up", "Maximum"), ("down", "Minimum")):
-        for contact_offset in (0.0, VERTICAL_CONTACT_OFFSET):
+        for contact_offset in (0.0, vertical_contact_offset):
             result = find_vertical_limit(
                 chain,
                 direction=direction,
