@@ -485,7 +485,98 @@ def get_candidate_gaps(chain, verbose=True):
             # TODO: write method to get segment-segment gaps
             skip_level_gap_right
         ])
-        
+
+    # =========================================================
+    # Evaluate FREE-RAILED neighboring pairs:
+    #
+    #     1-2
+    #     3-4
+    #     5-6
+    #     ...
+    #
+    # Here:
+    #     lower unit = FREE
+    #     upper unit = RAILED
+    #
+    # We evaluate selected upper-unit nodes against
+    # lower-unit struts.
+    # =========================================================
+
+    for lower_unit_index in range(
+        1,
+        len(chain.units) - 1,
+        2
+    ):
+        upper_unit_index = lower_unit_index + 1
+
+        # ---------------------------------------------------------
+        # Lower FREE unit diamond struts
+        # ---------------------------------------------------------
+
+        lower_unit_segment_BL = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}B{lower_unit_index}L"
+        )
+
+        lower_unit_segment_TR = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}T{lower_unit_index}R"
+        )
+
+        lower_unit_segment_RB = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}R{lower_unit_index}B"
+        )
+
+        lower_unit_segment_LT = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}L{lower_unit_index}T"
+        )
+
+        # ---------------------------------------------------------
+        # Upper RAILED unit nodes
+        # ---------------------------------------------------------
+
+        upper_node_R = chain.get_node_by_descriptor(
+            f"{upper_unit_index}R"
+        )
+
+        upper_node_B = chain.get_node_by_descriptor(
+            f"{upper_unit_index}B"
+        )
+
+        upper_node_L = chain.get_node_by_descriptor(
+            f"{upper_unit_index}L"
+        )
+
+        # ---------------------------------------------------------
+        # Candidate gaps
+        # ---------------------------------------------------------
+
+        gaps.extend([
+            # Right-rotation candidates
+            get_node_segment_gap(
+                upper_node_L,
+                lower_unit_segment_LT,
+                "counterclockwise"  # determine orientation
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                lower_unit_segment_RB,
+                "clockwise"  # determine orientation
+            ),
+
+            # Left-rotation candidates
+            get_node_segment_gap(
+                upper_node_R,
+                lower_unit_segment_TR,
+                "counterclockwise"  # determine orientation
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                lower_unit_segment_BL,
+                "clockwise"  # determine orientation
+            ),
+        ])
+    
     return gaps
 
 
