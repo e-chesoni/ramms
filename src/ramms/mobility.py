@@ -30,7 +30,8 @@ from ramms.symbolic import get_candidate_gaps
 
 def configuration_is_valid(
     chain,
-    contact_tolerance=1e-6
+    contact_tolerance=1e-6,
+    verbose=True
 ):
     """
     Return False if any physical member penetrates another.
@@ -39,7 +40,7 @@ def configuration_is_valid(
     Penetration is not.
     """
 
-    candidate_gaps = get_candidate_gaps(chain)
+    candidate_gaps = get_candidate_gaps(chain, verbose)
 
     for gap in candidate_gaps:
 

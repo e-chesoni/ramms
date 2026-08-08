@@ -1,15 +1,17 @@
 """Visual/manual checks for the two-unit workspace limit searches."""
 
+from ramms.core import RAMM_Chain
+from _fixtures import (
+    make_two_unit_chain,
+    make_three_unit_chain
+)
 from ramms.plotting import plot_geometry
 from ramms.workspace import (
     find_left_max_rotation,
     find_right_max_rotation,
     find_vertical_limit,
+    find_three_unit_jamming_candidate
 )
-
-from _fixtures import make_two_unit_chain
-from ramms.core import RAMM_Chain
-from ramms.workspace import find_three_unit_jamming_candidate
 
 
 # offsets are given in mm
@@ -19,6 +21,28 @@ VERTICAL_CONTACT_OFFSET = 2.0
 
 NODE_RADIUS = NODE_DIAMETER / 2
 STRUT_HALF_WIDTH = STRUT_WIDTH / 2
+
+
+def test_find_max_rotation(chain_units:int) -> None:
+    if chain_units == 2:
+        chain = make_two_unit_chain()
+    elif chain_units == 3:
+        chain = make_three_unit_chain()
+    else:
+        print(f"Requested units in chain must be 2 or 3.\n"
+              f"Number of units requested: {chain_units}"
+        )
+
+    result = find_right_max_rotation(chain, verbose=False)
+    theta_deg = result["theta_deg"]
+
+    print(f"max rotation: {theta_deg}")
+
+def test_find_max_rotation_unit_chain() -> None:
+    chain = make_two_unit_chain()
+    result = find_right_max_rotation(chain, verbose=False)
+    theta_deg = result["theta_deg"]
+    print(f"max rotation: {theta_deg}")
 
 
 def show_rotation_result(chain, result, title: str) -> None:
@@ -79,14 +103,13 @@ def test_three_unit_jamming() -> None:
             (0, 8.2),
             (0, 16)
         ],
-        node_diameter=2.0
+        node_diameter=2.0,
+        strut_width=2.0
     )
 
     result = find_three_unit_jamming_candidate(
         chain=three_unit_chain,
         direction="right",
-        node_strut_contact_offset=2.0,
-        segment_segment_contact_offset=2.0
     )
 
     plot_geometry(
@@ -96,6 +119,7 @@ def test_three_unit_jamming() -> None:
 
 
 def main() -> None:
+    #test_find_max_rotation(3)
     #check_rotation_limits()
     #check_vertical_limits()
     test_three_unit_jamming()

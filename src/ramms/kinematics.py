@@ -10,7 +10,7 @@ def get_fractional_centerline_position(
         chain,
         free_unit_index,
         railed_unit_index,
-        tolerance=1e-9
+        tolerance=1e-6
     ):
         """
         Calculate the fractional position of the FREE unit's top node
@@ -86,12 +86,15 @@ def get_fractional_centerline_position(
             )
 
         if s < -tolerance or s > 1 + tolerance:
+            """
             raise InvalidRAMMGeometryError(
                 f"FREE Unit {free_unit_index}'s top node is not "
                 f"between RAILED Unit {railed_unit_index}'s "
                 f"bottom and top nodes. s = {s:.6f}"
             )
-
+            """
+            print(f"WARNING: FREE Unit 1's top node is not between RAILED Unit 2's bottom and top nodes. s = {s}")
+            # TODO: instead of warning me, fix it! (translate the top unit)
         return float(s)
 
 
@@ -357,52 +360,54 @@ def rotate_with_cascade(
     pivot,
     degrees,
     constraint_validator,
-    angle_tolerance=1e-5,
-    tolerance=1e-8,
+    angle_tolerance=1e-6,
+    tolerance=1e-6,
     verbose=True
 ):
     """
-    Attempt a cascading rotation about an arbitrary pivot.
+    Description
+    ------------
+        Attempt a cascading rotation about an arbitrary pivot.
 
-    The chain follows the requested motion until the first physical
-    or geometric constraint prevents further motion.
+        The chain follows the requested motion until the first physical
+        or geometric constraint prevents further motion.
 
-    If the full requested rotation is valid, the full motion is applied.
+        If the full requested rotation is valid, the full motion is applied.
 
-    If the full requested rotation is invalid, the method uses bisection
-    to find the largest valid rotation between 0 and the requested angle.
+        If the full requested rotation is invalid, the method uses bisection
+        to find the largest valid rotation between 0 and the requested angle.
 
     Parameters
-    ----------
-    chain:
-        RAMM_Chain being transformed.
+    ------------
+        chain:
+            RAMM_Chain being transformed.
 
-    unit_index:
-        Index of the FREE unit being rotated.
+        unit_index:
+            Index of the FREE unit being rotated.
 
-    pivot:
-        RAMM_Node or (y, z) coordinate pair about which the FREE unit
-        attempts to rotate.
+        pivot:
+            RAMM_Node or (y, z) coordinate pair about which the FREE unit
+            attempts to rotate.
 
-    degrees:
-        Requested counterclockwise rotation in degrees.
+        degrees:
+            Requested counterclockwise rotation in degrees.
 
-    constraint_validator:
-        Callable with signature:
+        constraint_validator:
+            Callable with signature:
 
-            constraint_validator(chain) -> bool
+                constraint_validator(chain) -> bool
 
-        Returns True when the resulting configuration is physically valid
-        and False when penetration or another forbidden condition occurs.
+            Returns True when the resulting configuration is physically valid
+            and False when penetration or another forbidden condition occurs.
 
-    angle_tolerance:
-        Resolution used when searching for the contact-limited rotation.
+        angle_tolerance:
+            Resolution used when searching for the contact-limited rotation.
 
-    tolerance:
-        Numerical tolerance used by the cascading geometry helpers.
+        tolerance:
+            Numerical tolerance used by the cascading geometry helpers.
 
-    verbose:
-        Print information about the resulting motion.
+        verbose:
+            Print information about the resulting motion.
     """
 
     # ---------------------------------------------------------

@@ -141,7 +141,7 @@ def get_node_segment_symbolic_gap(node, segment, orientation):
     )
 
 
-def get_candidate_gaps(chain):
+def get_candidate_gaps(chain, verbose=True):
     """
     Return candidate node-segment gaps for RAILED-FREE unit pairs.
 
@@ -323,24 +323,24 @@ def get_candidate_gaps(chain):
             rail_R,
             "clockwise"
         )
+        if verbose:
+            print(
+                f"\nRail gaps between "
+                f"{upper_node_B.descriptor} and "
+                f"Unit {lower_unit_index} rails:"
+            )
 
-        print(
-            f"\nRail gaps between "
-            f"{upper_node_B.descriptor} and "
-            f"Unit {lower_unit_index} rails:"
-        )
+            print(
+                f"  {rail_L.descriptor} -> "
+                f"{upper_node_B.descriptor}: "
+                f"{left_rail_gap.length_mm:.6f} mm"
+            )
 
-        print(
-            f"  {rail_L.descriptor} -> "
-            f"{upper_node_B.descriptor}: "
-            f"{left_rail_gap.length_mm:.6f} mm"
-        )
-
-        print(
-            f"  {rail_R.descriptor} -> "
-            f"{upper_node_B.descriptor}: "
-            f"{right_rail_gap.length_mm:.6f} mm"
-        )
+            print(
+                f"  {rail_R.descriptor} -> "
+                f"{upper_node_B.descriptor}: "
+                f"{right_rail_gap.length_mm:.6f} mm"
+            )
 
     return gaps
 

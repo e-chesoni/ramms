@@ -6,6 +6,7 @@ from ramms.contact import (
 )
 from ramms.plotting import plot_gap, plot_geometry
 from ramms.kinematics import rotate_with_cascade
+from ramms.mobility import configuration_is_valid
 
 from _fixtures import make_three_unit_chain, make_two_unit_chain
 
@@ -63,7 +64,7 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
         unit_index=1,
         pivot=chain.units[1].bottom_node,
         degrees=rotation_degrees,
-        verbose=True,
+        constraint_validator=configuration_is_valid
     )
     chain.translate(2, dy=0, dz=-8.75, verbose=True)
 
@@ -97,8 +98,9 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
 
 def main() -> None:
     #check_node_segment_gaps()
-    check_three_unit_segment_gap(rotation_degrees=-28.39)
-    check_three_unit_segment_gap(rotation_degrees=28.39)
+    ROTATION_DEG = 28.39
+    check_three_unit_segment_gap(rotation_degrees=-ROTATION_DEG)
+    check_three_unit_segment_gap(rotation_degrees=ROTATION_DEG)
 
 
 if __name__ == "__main__":

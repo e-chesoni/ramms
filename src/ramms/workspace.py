@@ -139,7 +139,7 @@ def find_right_max_rotation(
     theta_bounds=(-60.0, 0.0),
     z_bounds=(-8.0, 5.0),
     default_offset=10,
-    contact_offset=0.0,
+    contact_offset=0.0, # node radius
     contact_tolerance=1e-6,
     verbose=True
 ):
@@ -746,134 +746,89 @@ def find_vertical_limit(
     }
 
 
-def find_segment_segment_contact_by_vertical_translation(
+def find_right_segment_segment_contact(
     chain,
-    moving_unit_index,
-    fixed_segment_descriptor,
-    moving_segment_descriptor,
-    dz_guess=-5.0,
-    dz_bounds=(-30.0, 10.0),
-    contact_offset=0.0,
-    parallel_tolerance=1e-6,
+    moving_unit_index=2,
+    dz_guess=-8.0,
+    dz_bounds=(-30.0, 0.0),
     contact_tolerance=1e-6,
     verbose=True
 ):
     """
-    Vertically translate one unit until a selected pair of parallel
-    finite segments reaches contact.
+    Move the top RAILED unit downward until the skip-level
+    segment pair reaches physical contact.
 
-    Parameters
-    ----------
-    chain:
-        RAMM_Chain in its CURRENT configuration.
+    Assumptions
+    -----------
+    The chain is already in the max-right configuration for
+    Units 0 and 1.
 
-        This is important: the method does not reset the chain.
-        It builds on whatever contacts/configuration have already
-        been established.
+    Target contact
+    --------------
+        Unit 0 segment: 0T0R
+        Unit 2 segment: 2B2L
 
-    moving_unit_index:
-        Index of the unit that will move vertically.
+    The segments must already be parallel. This method only
+    translates Unit 2 vertically; it does not rotate it.
 
-        For the current three-unit problem:
-            moving_unit_index = 2
+    Physical segment contact occurs when:
 
-    fixed_segment_descriptor:
-        Descriptor of the segment that remains fixed.
-
-        Example:
-            "0T0R"
-
-    moving_segment_descriptor:
-        Descriptor of the segment belonging to the moving unit.
-
-        Example:
-            "2B2L"
-
-    dz_guess:
-        Initial guess for the vertical translation.
-
-    dz_bounds:
-        Allowed vertical-translation range.
-
-    contact_offset:
-        Desired distance between the two segment centerlines at
-        physical contact.
-
-        Zero-thickness geometry:
-            contact_offset = 0
-
-        Two finite-width struts:
-            contact_offset =
-                fixed_strut_half_width
-                + moving_strut_half_width
-
-    parallel_tolerance:
-        Numerical tolerance for the parallelism check.
-
-    contact_tolerance:
-        Numerical tolerance for accepting the final contact.
-
-    Notes
-    -----
-    This method assumes the two segments are already parallel.
-
-    Vertical translation can change their separation, but it cannot
-    change their relative orientation.
+        perpendicular centerline distance
+            = chain.segment_segment_contact_offset
     """
 
-    if contact_offset < 0:
-        raise ValueError(
-            "contact_offset must be nonnegative."
-        )
+    # ---------------------------------------------------------
+    # 1. Get the two target segments
+    # ---------------------------------------------------------
+
+    fixed_segment = chain.get_segment_by_descriptor(
+        "0T0R"
+    )
+
+    moving_segment = chain.get_segment_by_descriptor(
+        "2B2L"
+    )
+
+    contact_offset = (
+        chain.segment_segment_contact_offset
+    )
 
     # ---------------------------------------------------------
-    # Save the configuration at the start of THIS solve.
+    # 2. Save the current max-right configuration
     #
-    # This may already contain the Unit 0-1 contact state.
+    # Every trial translation will start from this exact state.
     # ---------------------------------------------------------
 
     starting_coordinates = chain._save_coordinates()
 
-    fixed_segment = chain.get_segment_by_descriptor(
-        fixed_segment_descriptor
-    )
-
-    moving_segment = chain.get_segment_by_descriptor(
-        moving_segment_descriptor
-    )
-
     # ---------------------------------------------------------
-    # First confirm that the segments are already parallel.
+    # 3. Confirm the segments are already parallel
     # ---------------------------------------------------------
 
     initial_result = get_segment_segment_distance(
         fixed_segment,
-        moving_segment,
-        tolerance=parallel_tolerance
+        moving_segment
     )
 
     if not initial_result["parallel"]:
         raise InvalidRAMMGeometryError(
-            f"{fixed_segment_descriptor} and "
-            f"{moving_segment_descriptor} are not parallel. "
-            "Vertical translation alone cannot produce the "
-            "requested segment-segment contact."
+            "Segments 0T0R and 2B2L are not parallel. "
+            "Vertical translation alone cannot create the "
+            "requested contact."
         )
 
     # ---------------------------------------------------------
-    # Trial configuration
+    # 4. Evaluate segment clearance for a trial dz
     # ---------------------------------------------------------
 
     def evaluate_clearance(dz):
-        """
-        Restore the starting pose, move the selected unit vertically,
-        and return the segment-segment clearance.
-        """
 
+        # Always start from the original max-right configuration.
         chain._restore_coordinates(
             starting_coordinates
         )
 
+        # Move only Unit 2.
         chain.translate(
             unit_index=moving_unit_index,
             dy=0.0,
@@ -882,20 +837,18 @@ def find_segment_segment_contact_by_vertical_translation(
         )
 
         fixed_segment = chain.get_segment_by_descriptor(
-            fixed_segment_descriptor
+            "0T0R"
         )
 
         moving_segment = chain.get_segment_by_descriptor(
-            moving_segment_descriptor
+            "2B2L"
         )
 
         result = get_segment_segment_distance(
             fixed_segment,
-            moving_segment,
-            tolerance=parallel_tolerance
+            moving_segment
         )
 
-        # They should remain parallel under pure translation.
         if not result["parallel"]:
             raise InvalidRAMMGeometryError(
                 "Segments unexpectedly became nonparallel "
@@ -906,9 +859,6 @@ def find_segment_segment_contact_by_vertical_translation(
             result["perpendicular_distance"]
         )
 
-        # Physical contact:
-        #
-        # perpendicular centerline distance = contact_offset
         clearance = (
             perpendicular_distance
             - contact_offset
@@ -917,10 +867,11 @@ def find_segment_segment_contact_by_vertical_translation(
         return clearance, result
 
     # ---------------------------------------------------------
-    # Scalar residual for least_squares
+    # 5. Residual for least-squares solver
     # ---------------------------------------------------------
 
     def residual(x):
+
         dz = x[0]
 
         clearance, _ = evaluate_clearance(
@@ -932,7 +883,7 @@ def find_segment_segment_contact_by_vertical_translation(
         ])
 
     # ---------------------------------------------------------
-    # Solve for dz
+    # 6. Solve for vertical translation
     # ---------------------------------------------------------
 
     solution = least_squares(
@@ -953,7 +904,7 @@ def find_segment_segment_contact_by_vertical_translation(
     dz = solution.x[0]
 
     # ---------------------------------------------------------
-    # Leave the chain at the solved configuration.
+    # 7. Leave the chain at the solved contact configuration
     # ---------------------------------------------------------
 
     clearance, final_result = evaluate_clearance(
@@ -967,6 +918,10 @@ def find_segment_segment_contact_by_vertical_translation(
         and final_result["overlap"] >= -contact_tolerance
     )
 
+    # ---------------------------------------------------------
+    # 8. Print result
+    # ---------------------------------------------------------
+
     if verbose:
         print(
             f"Segment contact solver success: "
@@ -974,7 +929,8 @@ def find_segment_segment_contact_by_vertical_translation(
         )
 
         print(
-            f"Physically valid contact: {valid}"
+            f"Physically valid contact: "
+            f"{valid}"
         )
 
         print(
@@ -1006,13 +962,12 @@ def find_segment_segment_contact_by_vertical_translation(
     return {
         "success": valid,
         "solver_success": solution.success,
-        "moving_unit_index": moving_unit_index,
         "dz": dz,
         "contact_offset": contact_offset,
-        "clearance": clearance,
         "perpendicular_distance": (
             final_result["perpendicular_distance"]
         ),
+        "clearance": clearance,
         "overlap": final_result["overlap"],
         "solution": solution
     }
@@ -1021,8 +976,6 @@ def find_segment_segment_contact_by_vertical_translation(
 def find_three_unit_jamming_candidate(
     chain,
     direction="right",
-    node_strut_contact_offset=0.0,
-    segment_segment_contact_offset=0.0,
     segment_dz_guess=-8.0,
     verbose=True
 ):
@@ -1032,8 +985,7 @@ def find_three_unit_jamming_candidate(
 
     Workflow
     --------
-    1. Build a temporary 2-unit chain using the same Unit 0 -> Unit 1
-       offset as the real 3-unit chain.
+    1. get max angle for units 1 and 2 (its 38.66 with no offset)
     2. Solve the corresponding 2-unit max-rotation configuration.
     3. Extract the solved angle and z shift.
     4. Apply that motion to Unit 1 of the 3-unit chain using
@@ -1042,98 +994,105 @@ def find_three_unit_jamming_candidate(
     6. Translate Unit 2 vertically until those segments contact.
     """
 
-    if len(chain.units) != 3:
-        raise ValueError(
-            "This method currently requires exactly three units."
-        )
-
     direction = direction.lower()
+    print(f"direction: {direction}")
 
     # ---------------------------------------------------------
     # 1. Determine the actual Unit 0 -> Unit 1 offset
     # ---------------------------------------------------------
 
-    unit_0_bottom = chain.units[0].bottom_node.coordinates
-    unit_1_bottom = chain.units[1].bottom_node.coordinates
+    coords_0B = chain.units[0].bottom_node.coordinates
+    coords_1B = chain.units[1].bottom_node.coordinates
+    coords_2B = chain.units[2].bottom_node.coordinates
 
-    lower_offset = (
-        unit_1_bottom[0] - unit_0_bottom[0],
-        unit_1_bottom[1] - unit_0_bottom[1]
+    if verbose:
+        print("Initial bottom node coordinates for each unit:\n"
+            f"unit_0: {coords_0B}\n"
+            f"unit_1: {coords_1B}\n"
+            f"unit_2: {coords_2B}\n"
+        )
+    # ---------------------------------------------------------
+    # 5. Apply the solved rotation WITH cascade
+    #
+    # Unit 1 rotates.
+    # Unit 2 moves in response to the upper rail constraint.
+    # ---------------------------------------------------------
+    # TODO: rotation angle should depend on node_diameter
+    # Contact offsets come directly from the chain geometry.
+    node_strut_contact_offset = (
+        chain.node_strut_contact_offset
+    )
+
+    segment_segment_contact_offset = (
+        chain.segment_segment_contact_offset
     )
 
     if verbose:
         print(
-            "\nUsing Unit 0 -> Unit 1 offset from "
-            "the 3-unit chain:"
+            "Contact offsets:\n"
+            f"node-strut: {node_strut_contact_offset}\n"
+            f"segment-segment: {segment_segment_contact_offset}"
         )
-        print(
-            f"  dy = {lower_offset[0]:.6f} mm"
-        )
-        print(
-            f"  dz = {lower_offset[1]:.6f} mm"
-        )
+    #theta_deg = 38.66
+    #theta_deg = 38.65980825409009
+    # TODO: run find max rotation to get theta_deg
+    # ---------------------------------------------------------
+    # Find the Unit 0-1 limiting configuration on a TEMPORARY
+    # 2-unit chain.
+    #
+    # Do not run find_left/right_max_rotation() directly on the
+    # 3-unit chain because that solver leaves its input chain in
+    # the solved configuration.
+    # ---------------------------------------------------------
 
-    # ---------------------------------------------------------
-    # 2. Build a temporary 2-unit chain
-    # ---------------------------------------------------------
+    lower_offset = (
+        coords_1B[0] - coords_0B[0],
+        coords_1B[1] - coords_0B[1]
+    )
 
     two_unit_chain = RAMM_Chain.generate(
         n_units=2,
-        start_position=(0, 0),
+        start_position=coords_0B,
         offsets=lower_offset,
-        node_diameter=chain.node_diameter
+        node_diameter=chain.node_diameter,
+        strut_width=chain.strut_width
     )
 
-    # ---------------------------------------------------------
-    # 3. Solve the Unit 0-1 limiting configuration
-    # ---------------------------------------------------------
-
     if direction == "right":
-
-        lower_limit = find_right_max_rotation(
-            chain=two_unit_chain,
+        result = find_right_max_rotation(
+            two_unit_chain,
             contact_offset=node_strut_contact_offset,
-            verbose=verbose
+            verbose=False
         )
-
-        fixed_segment_descriptor = "0T0R"
-        moving_segment_descriptor = "2B2L"
 
     elif direction == "left":
-
-        lower_limit = find_left_max_rotation(
-            chain=two_unit_chain,
+        result = find_left_max_rotation(
+            two_unit_chain,
             contact_offset=node_strut_contact_offset,
-            verbose=verbose
+            verbose=False
         )
-
-        fixed_segment_descriptor = "0L0T"
-        moving_segment_descriptor = "2R2B"
 
     else:
         raise ValueError(
             "direction must be 'left' or 'right'."
         )
 
-    if not lower_limit["success"]:
+    if not result["success"]:
         raise InvalidRAMMGeometryError(
-            "Could not solve the two-unit limiting configuration."
+            "Could not find the Unit 0-1 limiting configuration."
         )
 
-    theta_deg = lower_limit["theta_deg"]
-    z_shift = lower_limit["z_shift"]
+    theta_deg = result["theta_deg"]
+    z_shift = result["z_shift"]
 
     if verbose:
         print("\nTwo-unit limiting solution:")
-        print(
-            f"  theta = {theta_deg:.6f} deg"
-        )
-        print(
-            f"  z shift = {z_shift:.6f} mm"
-        )
+        print(f"  theta = {theta_deg:.6f}°")
+        print(f"  z shift = {z_shift:.6f} mm")
+
 
     # ---------------------------------------------------------
-    # 4. Apply the solved z shift to Unit 1
+    # Apply the vertical shift from the 2-unit solution.
     # ---------------------------------------------------------
 
     chain.translate(
@@ -1143,13 +1102,6 @@ def find_three_unit_jamming_candidate(
         verbose=verbose
     )
 
-    # ---------------------------------------------------------
-    # 5. Apply the solved rotation WITH cascade
-    #
-    # Unit 1 rotates.
-    # Unit 2 moves in response to the upper rail constraint.
-    # ---------------------------------------------------------
-
     pivot = chain.units[1].bottom_node
 
     cascade_result = rotate_with_cascade(
@@ -1157,8 +1109,8 @@ def find_three_unit_jamming_candidate(
         unit_index=1,
         pivot=pivot,
         degrees=theta_deg,
-        constraint_validator=configuration_is_valid,
-        verbose=verbose
+        constraint_validator=configuration_is_valid, # why are all the rail gaps flipped?
+        verbose=False
     )
 
     if verbose:
@@ -1175,57 +1127,13 @@ def find_three_unit_jamming_candidate(
             f"{cascade_result['actual_degrees']:.6f} deg"
         )
 
-    # ---------------------------------------------------------
-    # 6. Check skip-level segment parallelism
-    # ---------------------------------------------------------
-
-    fixed_segment = chain.get_segment_by_descriptor(
-        fixed_segment_descriptor
-    )
-
-    moving_segment = chain.get_segment_by_descriptor(
-        moving_segment_descriptor
-    )
-
-    segment_state = get_segment_segment_distance(
-        fixed_segment,
-        moving_segment
-    )
-
-    if not segment_state["parallel"]:
-        raise InvalidRAMMGeometryError(
-            f"{fixed_segment_descriptor} and "
-            f"{moving_segment_descriptor} are not parallel "
-            "after the cascading Unit 1 rotation."
-        )
-
-    if verbose:
-        print(
-            f"\n{fixed_segment_descriptor} and "
-            f"{moving_segment_descriptor} are parallel."
-        )
-
-    # ---------------------------------------------------------
-    # 7. Move Unit 2 vertically until segment-segment contact
-    # ---------------------------------------------------------
-
-    segment_contact = (
-        find_segment_segment_contact_by_vertical_translation(
+    # TODO: move unit 2 down until segments 0T0R and 2B2L are in contact
+    segment_contact_result = (
+        find_right_segment_segment_contact(
             chain=chain,
-            moving_unit_index=2,
-            fixed_segment_descriptor=fixed_segment_descriptor,
-            moving_segment_descriptor=moving_segment_descriptor,
-            dz_guess=segment_dz_guess,
-            contact_offset=segment_segment_contact_offset,
             verbose=verbose
         )
     )
-
-    if not segment_contact["success"]:
-        raise InvalidRAMMGeometryError(
-            "Could not establish skip-level segment contact."
-        )
-
     # ---------------------------------------------------------
     # 8. Return the solved information
     # ---------------------------------------------------------
@@ -1233,10 +1141,10 @@ def find_three_unit_jamming_candidate(
     return {
         "success": True,
         "direction": direction,
-        "lower_offset": lower_offset,
-        "two_unit_solution": lower_limit,
+        #"lower_offset": lower_offset,
+        #"two_unit_solution": lower_limit,
         "theta_deg": theta_deg,
-        "z_shift": z_shift,
+        #"z_shift": z_shift,
         "cascade_result": cascade_result,
-        "segment_contact": segment_contact
+        "segment_contact": segment_contact_result
     }

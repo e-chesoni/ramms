@@ -146,17 +146,22 @@ class RAMM_Unit:
         left_node,
         unit_type,
         node_diameter=2.0,
+        strut_width=2.0,
         rail_nodes=None,
         rails=None
     ):
         self.unit_type = unit_type
         self.node_diameter = float(node_diameter)
-
-        if self.node_diameter <= 0:
+        self.strut_width = float(strut_width)
+        if self.node_diameter < 0:
             raise ValueError(
-                "node_diameter must be greater than zero."
+                "node_diameter must be nonnegative."
             )
 
+        if self.strut_width < 0:
+            raise ValueError(
+                "strut_width must be nonnegative."
+            )
         # ---------------------------------------------------------
         # Physical diamond nodes
         # ---------------------------------------------------------
@@ -431,7 +436,8 @@ class RAMM_Unit:
         bottom_position,
         unit_type,
         rotation_deg=0,
-        node_diameter=2.0
+        node_diameter=2.0,
+        strut_width=2.0
     ):
         """
         Generate a RAMM unit.
@@ -455,9 +461,9 @@ class RAMM_Unit:
             the rail centerlines are separated by node_diameter.
         """
 
-        if node_diameter <= 0:
+        if node_diameter < 0:
             raise ValueError(
-                "node_diameter must be greater than zero."
+                "node_diameter cannot be negative."
             )
 
         # ---------------------------------------------------------
@@ -713,11 +719,23 @@ class RAMM_Unit:
 class RAMM_Chain:
     def __init__(
         self,
-        node_diameter=2.0
+        node_diameter=2.0,
+        strut_width=2.0
     ):
         self.units = []
         self.node_diameter = float(node_diameter)
+        self.strut_width = float(strut_width)
         self.default_coordinates = None
+    @property
+    def node_strut_contact_offset(self):
+        return (
+            self.node_diameter / 2
+            + self.strut_width / 2
+        )
+
+    @property
+    def segment_segment_contact_offset(self):
+        return self.strut_width
 
     def get_struts_bottom_to_top_clockwise(self):
         """
@@ -977,7 +995,8 @@ class RAMM_Chain:
         start_position,
         offsets,
         rotations=None,
-        node_diameter=2.0
+        node_diameter=2.0,
+        strut_width=2.0
     ):
         """
         Generate a RAMM chain.
@@ -1015,9 +1034,9 @@ class RAMM_Chain:
                 "A chain must contain at least one unit."
             )
 
-        if node_diameter <= 0:
+        if node_diameter < 0:
             raise ValueError(
-                "node_diameter must be greater than zero."
+                "node_diameter cannot be negative."
             )
 
         required_offset_count = n_units - 1
@@ -1151,7 +1170,8 @@ class RAMM_Chain:
         # ---------------------------------------------------------
 
         chain = cls(
-            node_diameter=node_diameter
+            node_diameter=node_diameter,
+            strut_width=strut_width
         )
 
         current_position = start_position
@@ -1167,7 +1187,8 @@ class RAMM_Chain:
                 bottom_position=current_position,
                 unit_type=unit_type,
                 rotation_deg=expanded_rotations[i],
-                node_diameter=node_diameter
+                node_diameter=node_diameter,
+                strut_width=strut_width
             )
 
             chain.units.append(unit)
