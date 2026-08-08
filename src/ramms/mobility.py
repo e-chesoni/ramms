@@ -50,7 +50,7 @@ def configuration_is_valid(
     return True
 
 
-def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
+def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_active_gap_details=False):
     """
     Compute the Jacobian of the active gap vector.
 
@@ -87,7 +87,7 @@ def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
     if active_gap_vector.rows == 0:
         J = sp.zeros(0, len(q))
 
-        if verbose:
+        if print_active_gap:
             print("No active gaps.")
             print("\nGeneralized coordinates:")
             sp.pprint(q)
@@ -98,8 +98,8 @@ def get_gap_jacobian(active_gap_vector, q=None, verbose=False):
         return J, q
 
     J = active_gap_vector.jacobian(q)
-    
-    if verbose:
+
+    if print_active_gap_details:
         print(f"Active gap vector:")
         sp.pprint(active_gap_vector)
         print("\n")

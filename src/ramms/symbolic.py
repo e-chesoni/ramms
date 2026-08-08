@@ -258,12 +258,12 @@ def get_candidate_gaps(chain, verbose=True):
         # Lower RAILED unit rails
         # ---------------------------------------------------------
 
-        rail_L = chain.get_rail(
+        rail_0L = chain.get_rail(
             lower_unit_index,
             "left"
         )
 
-        rail_R = chain.get_rail(
+        rail_0R = chain.get_rail(
             lower_unit_index,
             "right"
         )
@@ -360,50 +360,16 @@ def get_candidate_gaps(chain, verbose=True):
 
             get_node_segment_gap(
                 upper_node_B,
-                rail_L,
+                rail_0L,
                 "clockwise"
             ),
 
             get_node_segment_gap(
                 upper_node_B,
-                rail_R,
+                rail_0R,
                 "counterclockwise"
             )
         ])
-
-        # ---------------------------------------------------------
-        # Temporary debugging
-        # ---------------------------------------------------------
-
-        left_rail_gap = get_node_segment_gap(
-            upper_node_B,
-            rail_L,
-            "counterclockwise"
-        )
-
-        right_rail_gap = get_node_segment_gap(
-            upper_node_B,
-            rail_R,
-            "clockwise"
-        )
-        if verbose:
-            print(
-                f"\nRail gaps between "
-                f"{upper_node_B.descriptor} and "
-                f"Unit {lower_unit_index} rails:"
-            )
-
-            print(
-                f"  {rail_L.descriptor} -> "
-                f"{upper_node_B.descriptor}: "
-                f"{left_rail_gap.length_mm:.6f} mm"
-            )
-
-            print(
-                f"  {rail_R.descriptor} -> "
-                f"{upper_node_B.descriptor}: "
-                f"{right_rail_gap.length_mm:.6f} mm"
-            )
 
     # TODO: Evaluate skip level gaps
     for base_unit_index in range(
@@ -508,7 +474,19 @@ def get_candidate_gaps(chain, verbose=True):
         2
     ):
         upper_unit_index = lower_unit_index + 1
+        lower_node_T = chain.get_node_by_descriptor(
+            f"{lower_unit_index}T"
+        )
+        
+        rail_2L = chain.get_rail(
+            upper_unit_index,
+            "left"
+        )
 
+        rail_2R = chain.get_rail(
+            upper_unit_index,
+            "right"
+            )
         # ---------------------------------------------------------
         # Lower FREE unit diamond struts
         # ---------------------------------------------------------
@@ -575,6 +553,19 @@ def get_candidate_gaps(chain, verbose=True):
                 lower_unit_segment_BL,
                 "clockwise"  # determine orientation
             ),
+
+            # TODO: get rail gaps for unit 1 top node constrained by unit 2 rails
+            get_node_segment_gap(
+                lower_node_T,
+                rail_2L,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                rail_2R,
+                "counterclockwise"
+            )
         ])
     
     return gaps

@@ -46,7 +46,8 @@ def find_active_gaps_2unit_chain() -> None:
 
     jacobian, coordinates = get_gap_jacobian(
         active_gap_vector,
-        verbose=True,
+        print_active_gap=True,
+        print_active_gap_details=True,
     )
 
     print("\nClose the plot to exit out of this run.")
@@ -125,7 +126,8 @@ def check_three_unit_mobility() -> None:
 
     jacobian, coordinates = get_gap_jacobian(
         active_gap_vector,
-        verbose=True
+        print_active_gap=True,
+        print_active_gap_details=False
     )
 
     # ---------------------------------------------------------
@@ -139,7 +141,7 @@ def check_three_unit_mobility() -> None:
     plot_geometry(
         three_unit_chain,
         plot_title="3-Unit Candidate Jamming Configuration",
-        xlim=(-15, 15),
+        xlim=(-15, 20), # TODO: will need to reverse this for left rotation
         ylim=(-5, 45),
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH
