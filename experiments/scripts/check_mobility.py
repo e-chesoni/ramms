@@ -1,5 +1,6 @@
 """End-to-end check from a configured chain to active gaps and Jacobian."""
 
+import numpy as np
 import sympy as sp
 from IPython.display import display
 
@@ -22,7 +23,8 @@ from ramms.core import RAMM_Chain
 from ramms.plotting import plot_geometry
 from ramms.symbolic import (
     get_candidate_gaps, 
-    get_active_gap_vector
+    get_active_gap_vector,
+    express_gaps_in_generalized_coordinates,
 )
 from ramms.mobility import get_gap_jacobian
 
@@ -30,6 +32,51 @@ from ramms.workspace import (
     find_three_unit_jamming_candidate,
     find_two_unit_jamming_candidate
 )
+
+@log_call
+def test():
+    two_unit_chain = make_two_unit_chain()
+    node = two_unit_chain.get_node_by_descriptor("1B")
+    print(node)
+    print(vars(node))
+
+@log_call
+def get_geometric_point_positions(chain):
+    point_positions = {}
+
+    # Ordinary diamond nodes for all units
+    for unit_index in range(len(chain.units)):
+        for node_name in ["B", "L", "R", "T"]:
+            node = chain.get_node_by_descriptor(
+                f"{unit_index}{node_name}"
+            )
+
+            point_positions[node.descriptor] = (
+                float(node.coordinates[0]),
+                float(node.coordinates[1]),
+            )
+
+    # Rail endpoints for railed units
+    for unit_index in range(0, len(chain.units), 2):
+        for side in ["left", "right"]:
+            rail = chain.get_rail(unit_index, side)
+
+            for rail_node in [rail.node_1, rail.node_2]:
+                point_positions[rail_node.descriptor] = (
+                    float(rail_node.coordinates[0]),
+                    float(rail_node.coordinates[1]),
+                )
+
+    return point_positions
+
+
+def classify_gap_change(value, tol=1e-9):
+    if value < -tol:
+        return "PENETRATION"
+    elif value > tol:
+        return "BREAKING"
+    else:
+        return "MAINTAINED"
 
 
 @log_call
@@ -52,6 +99,120 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
         print_gaps=print_gaps,
         print_active_gap_vector=print_active_gap_vec,
     )
+
+    point_positions = get_geometric_point_positions(
+        two_unit_chain
+    )
+
+    generalized_gap_vector, q = (
+        express_gaps_in_generalized_coordinates(
+            active_gap_vector,
+            point_positions,
+        )
+    )
+
+    generalized_jacobian = generalized_gap_vector.jacobian(q)
+
+    print("\nGeneralized coordinates:")
+    sp.pprint(q)
+
+    print("\nFree symbols:")
+    print(generalized_gap_vector.free_symbols)
+
+    print("\nGeneralized gap vector:")
+    sp.pprint(generalized_gap_vector)
+
+    print("\nGeneralized Jacobian:")
+    sp.pprint(generalized_jacobian)
+
+    print("\nGeneralized Jacobian dimensions:")
+    print(generalized_jacobian.shape)
+
+    # Sanity check: evaluate the generalized gap vector
+    # at the candidate configuration
+    candidate_state = {
+        q[0]: 0,
+        q[1]: 0,
+    }
+
+    print("\nGeneralized gaps at candidate state:")
+    sp.pprint(
+        generalized_gap_vector
+        .subs(candidate_state)
+        .evalf()
+    )
+
+    J_numeric = generalized_jacobian.subs(
+        {
+            q[0]: 0,
+            q[1]: 0,
+        }
+    ).evalf()
+
+    print("\nNumerical generalized Jacobian:")
+    sp.pprint(J_numeric)
+
+    print("\nRank:")
+    print(J_numeric.rank())
+
+
+    J_np = np.array(
+        J_numeric.tolist(),
+        dtype=float,
+    )
+
+    U, singular_values, Vt = np.linalg.svd(
+        J_np,
+        full_matrices=True,
+    )
+
+    print("\nSingular values:")
+    print(singular_values)
+
+    rank = np.linalg.matrix_rank(J_np)
+
+    nullity = J_np.shape[1] - rank
+
+    print("\nNumerical rank:")
+    print(rank)
+
+    print("\nNullity:")
+    print(nullity)
+
+    print("\nRight singular vectors:")
+    print(Vt)
+
+    direction_tests = {
+        "+z_1": np.array([1.0, 0.0]),
+        "-z_1": np.array([-1.0, 0.0]),
+        "+theta_1": np.array([0.0, 1.0]),
+        "-theta_1": np.array([0.0, -1.0]),
+    }
+
+    print("\nDirectional gap-change tests:")
+
+    for name, dq in direction_tests.items():
+        delta_g = J_np @ dq
+
+        print(f"\n{name}")
+
+        for i, value in enumerate(delta_g):
+            status = classify_gap_change(value)
+
+            print(
+                f"  gap {i}: "
+                f"{value:+.6f}  -> {status}"
+            )
+
+    for name, dq in direction_tests.items():
+        delta_g = J_np @ dq
+
+        admissible = np.all(delta_g >= -1e-9)
+
+        print(
+            f"{name}: "
+            f"{'ADMISSIBLE' if admissible else 'BLOCKED'}"
+        )
 
     jacobian, coordinates = get_gap_jacobian(
         active_gap_vector,
@@ -153,5 +314,6 @@ def check_three_unit_mobility() -> None:
     )
 
 if __name__ == "__main__":
+    test()
     check_two_unit_mobility(print_gaps=True)
     #check_three_unit_mobility()

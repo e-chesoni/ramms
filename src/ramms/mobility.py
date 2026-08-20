@@ -115,3 +115,7 @@ def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_ac
         print(J.shape)
     
     return active_gap_vector.jacobian(q), q
+
+
+#TODO: convert the jacobian to generalized coordinates
+

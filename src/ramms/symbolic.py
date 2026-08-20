@@ -663,7 +663,7 @@ def get_active_gap_vector(
                 )
 
                 active_gap_expressions.append(
-                    symbolic_gap.signed_gap
+                    symbolic_gap.signed_gap - contact_offset
                 )
 
             # ---------------------------------------------
@@ -676,7 +676,7 @@ def get_active_gap_vector(
                 )
 
                 active_gap_expressions.append(
-                    symbolic_gap.signed_gap
+                    symbolic_gap.signed_gap - contact_offset
                 )
 
             else:
@@ -693,3 +693,227 @@ def get_active_gap_vector(
         sp.pprint(active_gap_vector)
 
     return active_gap_vector
+
+def rigid_point_2d(
+    point_default,
+    pivot_default,
+    dz,
+    theta,
+):
+    """
+    Symbolic position of a point undergoing:
+        1. translation in z by dz
+        2. rotation by theta about pivot_default
+
+    Coordinates use the RAMMS convention (y, z).
+    """
+
+    y0, z0 = point_default
+    py, pz = pivot_default
+
+    # Point coordinates relative to the rotation pivot
+    ry = y0 - py
+    rz = z0 - pz
+
+    # Rigid rotation + translation
+    y = py + ry * sp.cos(theta) - rz * sp.sin(theta)
+
+    z = (
+        pz
+        + dz
+        + ry * sp.sin(theta)
+        + rz * sp.cos(theta)
+    )
+
+    return sp.Matrix([y, z])
+
+
+def parse_gap_coordinate_symbol(symbol):
+    """
+    Parse a symbolic coordinate used in a gap expression.
+
+    Examples
+    --------
+    A_1B_y  -> (1, "B", "y")
+    B_1L_z  -> (1, "L", "z")
+    P_0T_y  -> (0, "T", "y")
+    A_0RLL_y -> (0, "RLL", "y")
+
+    The leading A/B/P describes the point's role in the gap
+    construction and is not part of its physical identity.
+    """
+
+    match = re.fullmatch(
+        r"[ABP]_(\d+)([A-Za-z]+)_([yz])",
+        symbol.name,
+    )
+
+    if match is None:
+        return None
+
+    unit_index = int(match.group(1))
+    point_name = match.group(2)
+    axis = match.group(3)
+
+    return unit_index, point_name, axis
+
+
+def get_symbolic_point_position_2unit(
+    point_default,
+    pivot_default,
+    dz,
+    theta,
+):
+    """
+    Express a point on Unit 1 in terms of the two-unit
+    generalized coordinates dz and theta.
+    """
+
+    y0, z0 = point_default
+    py, pz = pivot_default
+
+    ry = y0 - py
+    rz = z0 - pz
+
+    y = (
+        py
+        + ry * sp.cos(theta)
+        - rz * sp.sin(theta)
+    )
+
+    z = (
+        pz
+        + dz
+        + ry * sp.sin(theta)
+        + rz * sp.cos(theta)
+    )
+
+    return {
+        "y": sp.simplify(y),
+        "z": sp.simplify(z),
+    }
+
+
+def express_gaps_in_generalized_coordinates(
+    active_gap_vector,
+    point_positions,
+):
+    """
+    Convert a two-unit active gap vector from Cartesian
+    coordinate symbols into generalized coordinates.
+
+    Two-unit generalized coordinates:
+        q = [z_1, theta_1]
+
+    Parameters
+    ----------
+    active_gap_vector : sympy.Matrix
+        Existing active gap vector written using symbols such as
+        A_1B_y, B_1L_z, P_0T_y, etc.
+
+    point_positions : dict
+        Default/reference coordinates of every physical point that
+        can appear in the active gaps.
+
+        Example:
+        {
+            "0T": (0.0, 20.0),
+            "0L": (-8.0, 10.0),
+            "1B": (0.0, 10.0),
+            "1L": (-8.0, 20.0),
+            ...
+        }
+
+        Rail endpoints such as "0RLL" should also be included.
+
+    Returns
+    -------
+    generalized_gap_vector : sympy.Matrix
+        Same active gaps, now written in terms of z_1 and theta_1.
+
+    q : sympy.Matrix
+        Ordered generalized-coordinate vector.
+    """
+
+    z_1, theta_1 = sp.symbols(
+        "z_1 theta_1",
+        real=True,
+    )
+
+    q = sp.Matrix([
+        z_1,
+        theta_1,
+    ])
+
+    # Unit 1 rotates about its bottom node.
+    pivot_default = point_positions["1B"]
+
+    substitutions = {}
+
+    # Find every Cartesian symbol actually used by the active gaps.
+    symbols = set()
+
+    for gap in active_gap_vector:
+        symbols.update(gap.free_symbols)
+
+    for symbol in symbols:
+
+        parsed = parse_gap_coordinate_symbol(symbol)
+
+        # Ignore symbols that are not Cartesian gap coordinates.
+        if parsed is None:
+            continue
+
+        unit_index, point_name, axis = parsed
+
+        point_key = f"{unit_index}{point_name}"
+
+        if point_key not in point_positions:
+            raise KeyError(
+                f"No physical point found for {symbol}. "
+                f"Expected point_positions['{point_key}']."
+            )
+
+        point_default = point_positions[point_key]
+
+        # ---------------------------------------------
+        # Unit 0 is fixed
+        # ---------------------------------------------
+        if unit_index == 0:
+            axis_index = 0 if axis == "y" else 1
+
+            substitutions[symbol] = sp.Float(
+                point_default[axis_index]
+            )
+
+        # ---------------------------------------------
+        # Unit 1 moves with z_1 and theta_1
+        # ---------------------------------------------
+        elif unit_index == 1:
+
+            symbolic_position = (
+                get_symbolic_point_position_2unit(
+                    point_default=point_default,
+                    pivot_default=pivot_default,
+                    dz=z_1,
+                    theta=theta_1,
+                )
+            )
+
+            substitutions[symbol] = (
+                symbolic_position[axis]
+            )
+
+        else:
+            raise NotImplementedError(
+                "Current implementation supports "
+                "two-unit chains only."
+            )
+
+    generalized_gap_vector = sp.Matrix([
+        sp.simplify(gap.subs(substitutions))
+        for gap in active_gap_vector
+    ])
+
+    return generalized_gap_vector, q
+
