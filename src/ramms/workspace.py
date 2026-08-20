@@ -973,10 +973,81 @@ def find_right_segment_segment_contact(
     }
 
 
+def find_two_unit_jamming_candidate(
+    chain,
+    direction="right",
+    verbose=True,
+):
+    """
+    Move a 2-unit chain to its limiting rotational configuration.
+
+    Parameters
+    ----------
+    chain : RAMM_Chain
+        Two-unit chain to configure.
+
+    direction : {"left", "right"}
+        Direction Unit 1 rotates toward its limiting configuration.
+
+    verbose : bool
+        Print solver information.
+
+    Returns
+    -------
+    dict
+        Solver result for the limiting configuration.
+
+    Notes
+    -----
+    The input chain is left in the solved configuration.
+    """
+
+    if len(chain.units) != 2:
+        raise ValueError(
+            "find_two_unit_jamming_candidate requires a 2-unit chain."
+        )
+
+    direction = direction.lower()
+
+    contact_offset = chain.node_strut_contact_offset
+
+    if direction == "right":
+        result = find_right_max_rotation(
+            chain=chain,
+            contact_offset=contact_offset,
+            verbose=verbose,
+        )
+
+    elif direction == "left":
+        result = find_left_max_rotation(
+            chain=chain,
+            contact_offset=contact_offset,
+            verbose=verbose,
+        )
+
+    else:
+        raise ValueError(
+            "direction must be 'left' or 'right'."
+        )
+
+    if not result["success"]:
+        raise InvalidRAMMGeometryError(
+            f"Could not find the two-unit {direction} "
+            "limiting configuration."
+        )
+
+    return {
+        "success": True,
+        "direction": direction,
+        "theta_deg": result["theta_deg"],
+        "z_shift": result["z_shift"],
+        "solver_result": result,
+    }
+
+
 def find_three_unit_jamming_candidate(
     chain,
     direction="right",
-    segment_dz_guess=-8.0,
     verbose=True
 ):
     """

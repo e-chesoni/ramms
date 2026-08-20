@@ -3,6 +3,7 @@
 import sympy as sp
 from IPython.display import display
 
+from ramms.logger import log_call
 from _fixtures import (
     make_two_unit_chain,
     make_three_unit_chain
@@ -17,61 +18,78 @@ from ramms.mobility import get_gap_jacobian
 
 from ramms.workspace import (
     find_three_unit_jamming_candidate,
+    find_two_unit_jamming_candidate
 )
 
-def find_active_gaps_2unit_chain() -> None:
-    NODE_DIAMETER_PLOT = 1200
-    SEG_LINE_WIDTH = 30
-    ROTATION_DEG = 38.66 # 38.66 = max; change to 50 and uncomment below to test finding rail contact
+NODE_DIAMETER_PLOT = 1200
+SEG_LINE_WIDTH = 30
 
-    chain = make_two_unit_chain()
-    PIVOT = chain.units[1].bottom_node
-    #PIVOT = (5,10) # uncomment to test finding rail contact
-    print(f"Rotation pivot coordinates: {PIVOT}")
+@log_call
+def test(print_find_candidate_results=False):
+    two_unit_chain = make_two_unit_chain()
+    PIVOT = two_unit_chain.units[1].bottom_node
 
-    #chain.reset() # do we neeed this if you're making a new chain?
-    chain.translate(1,dz=-1.8,verbose=True)
-    chain.rotate(
-        unit_index=1,
-        pivot=PIVOT,
-        degrees=ROTATION_DEG,
+    result = find_two_unit_jamming_candidate(
+        two_unit_chain,
+        direction="right",
+        verbose=print_find_candidate_results
     )
-    tol = ((chain.node_diameter/2) + (chain.strut_width/2))
-    candidate_gaps = get_candidate_gaps(chain)
+
+    plot_geometry(
+        two_unit_chain,
+        plot_title="2-Unit Candidate Jamming Configuration",
+        xlim=(-15, 20), # TODO: will need to reverse this for left rotation
+        ylim=(-5, 45),
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH
+    )       
+
+
+@log_call
+def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
+    two_unit_chain = make_two_unit_chain()
+    PIVOT = two_unit_chain.units[1].bottom_node
+    
+    result = find_two_unit_jamming_candidate(
+        two_unit_chain,
+        direction="right",
+        verbose=print_find_candidate_results
+    )
+
+    tol = two_unit_chain.node_strut_contact_offset
+    print(f"TOLERANCE:{tol}")
+    candidate_gaps = get_candidate_gaps(two_unit_chain)
     active_gap_vector = get_active_gap_vector(
         candidate_gaps,
-        contact_tolerance=tol,
-        verbose=True,
+        contact_offset=tol,
+        print_gaps=print_gaps,
+        print_active_gap_vector=print_active_gap_vec,
     )
 
     jacobian, coordinates = get_gap_jacobian(
         active_gap_vector,
-        print_active_gap=True,
-        print_active_gap_details=True,
+        print_active_gap=print_active_gap_vec,
+        print_active_gap_details=print_active_gap_details,
     )
 
     print("\nClose the plot to exit out of this run.")
 
-    plot_geometry(chain, 
-                 xlim=(-15, 15), 
-                 ylim=(-5, 60)
-    )
-    
-    """
-    print("\nGeneralized coordinates:")
-    sp.pprint(coordinates)
-    print("\nGap Jacobian:")
-    sp.pprint(jacobian)
-    """
+    plot_geometry(
+            two_unit_chain,
+            plot_title="2-Unit Candidate Jamming Configuration",
+            xlim=(-15, 20), # TODO: will need to reverse this for left rotation
+            ylim=(-5, 45),
+            node_diameter=NODE_DIAMETER_PLOT,
+            segment_line_width=SEG_LINE_WIDTH
+        )  
 
+
+@log_call
 def check_three_unit_mobility() -> None:
     """
     End-to-end mobility check for a candidate 3-unit
     jamming configuration.
     """
-
-    NODE_DIAMETER_PLOT = 1200
-    SEG_LINE_WIDTH = 30
 
     # ---------------------------------------------------------
     # 1. Create 3-unit chain
@@ -117,7 +135,7 @@ def check_three_unit_mobility() -> None:
             three_unit_chain.node_strut_contact_offset
         ),
         contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
-        verbose=True
+        print_active_gap_vector=True
     )
 
     # ---------------------------------------------------------
@@ -127,7 +145,7 @@ def check_three_unit_mobility() -> None:
     jacobian, coordinates = get_gap_jacobian(
         active_gap_vector,
         print_active_gap=True,
-        print_active_gap_details=False
+        print_active_gap_details=False # if uncommented, the jacobian is so large, you cant really see the rest of the output (10,46)
     )
 
     # ---------------------------------------------------------
@@ -148,5 +166,6 @@ def check_three_unit_mobility() -> None:
     )
 
 if __name__ == "__main__":
-    #find_active_gaps_2unit_chain()
-    check_three_unit_mobility()
+    #test()
+    check_two_unit_mobility(print_gaps=True)
+    #check_three_unit_mobility()

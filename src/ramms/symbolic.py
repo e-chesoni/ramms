@@ -575,7 +575,8 @@ def get_active_gap_vector(
     candidate_gaps,
     contact_offset=0.0,
     contact_tolerance=1e-6,
-    verbose=False
+    print_gaps=True,
+    print_active_gap_vector=True
 ):
     active_gap_expressions = []
 
@@ -611,34 +612,29 @@ def get_active_gap_vector(
         else:
             contact_object = "UNKNOWN"
 
-        if verbose:
+        if print_gaps:
+            gap_distance = gap_length_mm - contact_offset
 
-            if clearance < -contact_tolerance:
+            if gap_distance < -contact_tolerance:
 
                 print(
                     f"❌ PENETRATING! "
                     f"{candidate.segment_1} and "
                     f"{contact_object}\n"
-                    f"Centerline gap: "
-                    f"{gap_length_mm:.6f} mm\n"
-                    f"Clearance: "
-                    f"{clearance:.6f} mm"
+                    f"Gap: {gap_distance:.6f} mm"
                 )
 
             elif math.isclose(
-                clearance,
+                gap_distance,
                 0.0,
                 abs_tol=contact_tolerance
             ):
-
+                gap_distance = 0.0 # clamp close to zero values for display
                 print(
                     f"✅ CONTACT: "
                     f"{candidate.segment_1} and "
                     f"{contact_object}\n"
-                    f"Centerline gap: "
-                    f"{gap_length_mm:.6f} mm\n"
-                    f"Clearance: "
-                    f"{clearance:.6f} mm"
+                    f"Gap: {gap_distance:.6f} mm"
                 )
 
             else:
@@ -647,10 +643,7 @@ def get_active_gap_vector(
                     f"Gap between "
                     f"{candidate.segment_1} and "
                     f"{contact_object} is open.\n"
-                    f"Centerline gap: "
-                    f"{gap_length_mm:.6f} mm\n"
-                    f"Clearance: "
-                    f"{clearance:.6f} mm"
+                    f"Gap: {gap_distance:.6f} mm"
                 )
 
         # Add only actual contact constraints.
@@ -696,7 +689,7 @@ def get_active_gap_vector(
         active_gap_expressions
     )
 
-    if verbose:
+    if print_active_gap_vector:
         sp.pprint(active_gap_vector)
 
     return active_gap_vector
