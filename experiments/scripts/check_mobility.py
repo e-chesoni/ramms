@@ -21,29 +21,9 @@ from ramms.workspace import (
     find_two_unit_jamming_candidate
 )
 
+
 NODE_DIAMETER_PLOT = 1200
 SEG_LINE_WIDTH = 30
-
-@log_call
-def test(print_find_candidate_results=False):
-    two_unit_chain = make_two_unit_chain()
-    PIVOT = two_unit_chain.units[1].bottom_node
-
-    result = find_two_unit_jamming_candidate(
-        two_unit_chain,
-        direction="right",
-        verbose=print_find_candidate_results
-    )
-
-    plot_geometry(
-        two_unit_chain,
-        plot_title="2-Unit Candidate Jamming Configuration",
-        xlim=(-15, 20), # TODO: will need to reverse this for left rotation
-        ylim=(-5, 45),
-        node_diameter=NODE_DIAMETER_PLOT,
-        segment_line_width=SEG_LINE_WIDTH
-    )       
-
 
 @log_call
 def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
@@ -166,6 +146,5 @@ def check_three_unit_mobility() -> None:
     )
 
 if __name__ == "__main__":
-    #test()
     check_two_unit_mobility(print_gaps=True)
     #check_three_unit_mobility()
