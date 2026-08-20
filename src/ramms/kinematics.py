@@ -4,9 +4,10 @@ plt.style.use("seaborn-v0_8-whitegrid")
 import math
 
 from .core import *
+from .logger import *
 
 
-def get_fractional_centerline_position(
+def _get_fractional_centerline_position(
         chain,
         free_unit_index,
         railed_unit_index,
@@ -98,7 +99,7 @@ def get_fractional_centerline_position(
         return float(s)
 
 
-def translate_units_from(
+def _translate_units_from(
         chain,
         start_unit_index,
         dy,
@@ -122,7 +123,7 @@ def translate_units_from(
             )
 
 
-def reposition_railed_unit_from_free_top(
+def _reposition_railed_unit_from_free_top(
         chain,
         free_unit_index,
         railed_unit_index,
@@ -170,7 +171,7 @@ def reposition_railed_unit_from_free_top(
         translation = target_bottom - current_bottom
         dy, dz = translation
 
-        translate_units_from(
+        _translate_units_from(
             chain,
             start_unit_index=railed_unit_index,
             dy=dy,
@@ -180,7 +181,7 @@ def reposition_railed_unit_from_free_top(
         return float(dy), float(dz)
 
 
-def align_railed_unit_to_free_top(
+def _align_railed_unit_to_free_top(
     chain,
     free_unit_index,
     railed_unit_index
@@ -244,7 +245,7 @@ def align_railed_unit_to_free_top(
 
     # Shift the RAILED unit and everything above it sideways
     # just enough to put the FREE top on its centerline.
-    translate_units_from(
+    _translate_units_from(
         chain,
         start_unit_index=railed_unit_index,
         dy=dy,
@@ -258,7 +259,7 @@ def align_railed_unit_to_free_top(
     }
 
 
-def validate_free_railed_centerline_constraint(
+def _validate_free_railed_centerline_constraint(
         chain,
         free_unit_index,
         railed_unit_index,
@@ -269,7 +270,7 @@ def validate_free_railed_centerline_constraint(
         Confirm that the FREE top node lies on and between the
         neighboring RAILED unit's bottom-to-top centerline.
         """
-        actual_s = get_fractional_centerline_position(
+        actual_s = _get_fractional_centerline_position(
             chain,
             free_unit_index=free_unit_index,
             railed_unit_index=railed_unit_index,
@@ -325,7 +326,7 @@ def _apply_cascading_rotation(
 
     if has_railed_unit_above:
 
-        alignment = align_railed_unit_to_free_top(
+        alignment = _align_railed_unit_to_free_top(
             chain,
             free_unit_index=unit_index,
             railed_unit_index=railed_unit_index
@@ -336,7 +337,7 @@ def _apply_cascading_rotation(
             alignment["dz"]
         )
 
-        actual_s = get_fractional_centerline_position(
+        actual_s = _get_fractional_centerline_position(
             chain,
             free_unit_index=unit_index,
             railed_unit_index=railed_unit_index,
@@ -354,6 +355,7 @@ def _apply_cascading_rotation(
     }
 
 
+@log_call
 def rotate_with_cascade(
     chain,
     unit_index,
@@ -625,8 +627,3 @@ def rotate_with_cascade(
             final_result["fractional_position"]
         )
     }
-
-
-def set_two_unit_configuration(chain, theta, z):
-    print("WARNING: Method called, but not written!")
-    pass

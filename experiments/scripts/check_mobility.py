@@ -6,7 +6,17 @@ from IPython.display import display
 from ramms.logger import log_call
 from _fixtures import (
     make_two_unit_chain,
-    make_three_unit_chain
+    make_three_unit_chain,
+    NODE_DIAMETER_PLOT,
+    SEG_LINE_WIDTH,
+    XLIM,
+    TWO_UNIT_YLIM,
+    THREE_UNIT_YLIM,
+    TWO_UNIT_ROTATED_RIGHT_XLIM,
+    TWO_UNIT_ROTATED_LEFT_XLIM,
+    THREE_UNIT_ROTATED_RIGHT_XLIM,
+    THREE_UNIT_ROTATED_LEFT_XLIM,
+    ROTATED_THREE_UNIT_YLIM,
 )
 from ramms.core import RAMM_Chain
 from ramms.plotting import plot_geometry
@@ -21,9 +31,6 @@ from ramms.workspace import (
     find_two_unit_jamming_candidate
 )
 
-
-NODE_DIAMETER_PLOT = 1200
-SEG_LINE_WIDTH = 30
 
 @log_call
 def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
@@ -57,8 +64,8 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
     plot_geometry(
             two_unit_chain,
             plot_title="2-Unit Candidate Jamming Configuration",
-            xlim=(-15, 20), # TODO: will need to reverse this for left rotation
-            ylim=(-5, 45),
+            xlim=TWO_UNIT_ROTATED_RIGHT_XLIM,
+            ylim=TWO_UNIT_YLIM,
             node_diameter=NODE_DIAMETER_PLOT,
             segment_line_width=SEG_LINE_WIDTH
         )  
@@ -139,8 +146,8 @@ def check_three_unit_mobility() -> None:
     plot_geometry(
         three_unit_chain,
         plot_title="3-Unit Candidate Jamming Configuration",
-        xlim=(-15, 20), # TODO: will need to reverse this for left rotation
-        ylim=(-5, 45),
+        xlim=THREE_UNIT_ROTATED_RIGHT_XLIM,
+        ylim=ROTATED_THREE_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH
     )

@@ -12,7 +12,7 @@ import math
 from dataclasses import dataclass
 
 from .core import *
-
+from .logger import *
 
 # ============================================================================
 # Data Structures
@@ -139,6 +139,7 @@ def cross_2d(a, b): # TODO: make this private (with a leading _)
 # ============================================================================
 # Public API
 # ============================================================================
+@log_call
 def get_node_segment_distance(node, segment, orientation):
     """
     Calculate the signed gap between a node and a finite segment.
@@ -222,6 +223,7 @@ def get_node_segment_distance(node, segment, orientation):
     )
 
 
+@log_call
 def get_node_segment_gap(node, segment, orientation, verbose=False):
 
     gap_result = get_node_segment_distance(
@@ -267,7 +269,7 @@ def get_node_segment_gap(node, segment, orientation, verbose=False):
 
     return gap
 
-
+@log_call
 def get_segment_segment_distance(
     bottom_unit_segment: RAMM_Strut,
     top_unit_segment: RAMM_Strut,
@@ -365,7 +367,7 @@ def get_segment_segment_distance(
         "touching": touching
     }
 
-
+@log_call
 def get_segment_segment_gap(
     bottom_unit_segment,
     top_unit_segment,

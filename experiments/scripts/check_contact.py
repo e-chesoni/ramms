@@ -1,5 +1,6 @@
 """Manual numerical gap checks derived from the notebook."""
 
+from ramms.logger import log_call
 from ramms.contact import (
     get_node_segment_gap,
     get_segment_segment_distance,
@@ -8,9 +9,20 @@ from ramms.plotting import plot_gap, plot_geometry
 from ramms.kinematics import rotate_with_cascade
 from ramms.mobility import configuration_is_valid
 
-from _fixtures import make_three_unit_chain, make_two_unit_chain
+from _fixtures import (
+    make_two_unit_chain,
+    make_three_unit_chain,
+    NODE_DIAMETER_PLOT,
+    SEG_LINE_WIDTH,
+    XLIM,
+    TWO_UNIT_YLIM,
+    THREE_UNIT_YLIM,
+    TWO_UNIT_ROTATED_RIGHT_XLIM,
+    TWO_UNIT_ROTATED_LEFT_XLIM,
+    ROTATED_THREE_UNIT_YLIM,
+)
 
-
+@log_call
 def check_node_segment_gaps() -> None:
     chain = make_two_unit_chain()
     top_unit_index = 1
@@ -43,7 +55,7 @@ def check_node_segment_gaps() -> None:
     # Retained from the notebook as an additional segment-segment sanity check.
     print(get_segment_segment_distance(segment_1B1L, segment_1R1B))
 
-
+@log_call
 def check_three_unit_segment_gap(rotation_degrees: float) -> None:
     chain = make_three_unit_chain(
         node_diameter=6.0,
@@ -53,10 +65,10 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
     plot_geometry(
         chain,
         plot_title="Before Cascading Rotation",
-        xlim=(-15, 15),
-        ylim=(-5, 55),
-        node_diameter=1200,
-        segment_line_width=20,
+        xlim=XLIM,
+        ylim=THREE_UNIT_YLIM,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
     )
 
     rotate_with_cascade(
@@ -80,28 +92,26 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
     print("Pivot descriptor:", chain.get_node_by_descriptor("1T").descriptor)
 
     if rotation_degrees > 0:
-        xlim_min = -25
-        xlim_max = 15
+        xlim = TWO_UNIT_ROTATED_LEFT_XLIM
     else:
-        xlim_min = -15
-        xlim_max = 25
+        xlim = TWO_UNIT_ROTATED_RIGHT_XLIM
 
     plot_geometry(
         chain,
         plot_title="After Rotation and Translation",
-        xlim=(xlim_min, xlim_max),
-        ylim=(-5, 45),
-        node_diameter=1200,
-        segment_line_width=30,
+        xlim=xlim,
+        ylim=ROTATED_THREE_UNIT_YLIM,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
     )
 
-
-def main() -> None:
+@log_call
+def package_deal() -> None:
     #check_node_segment_gaps()
     ROTATION_DEG = 28.39
     check_three_unit_segment_gap(rotation_degrees=-ROTATION_DEG)
-    check_three_unit_segment_gap(rotation_degrees=ROTATION_DEG)
+    #check_three_unit_segment_gap(rotation_degrees=ROTATION_DEG) # TODO: cant do this until we have rotation the other way
 
 
 if __name__ == "__main__":
-    main()
+    package_deal()

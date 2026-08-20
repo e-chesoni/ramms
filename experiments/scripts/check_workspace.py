@@ -1,9 +1,21 @@
 """Visual/manual checks for the two-unit workspace limit searches."""
 
+from ramms.logger import log_call
 from ramms.core import RAMM_Chain
 from _fixtures import (
     make_two_unit_chain,
-    make_three_unit_chain
+    make_three_unit_chain,
+    NODE_DIAMETER_PLOT,
+    SEG_LINE_WIDTH,
+    XLIM,
+    TWO_UNIT_YLIM,
+    THREE_UNIT_YLIM,
+    FOUR_UNIT_YLIM,
+    TWO_UNIT_ROTATED_RIGHT_XLIM,
+    TWO_UNIT_ROTATED_LEFT_XLIM,
+    THREE_UNIT_ROTATED_RIGHT_XLIM,
+    THREE_UNIT_ROTATED_LEFT_XLIM,
+    ROTATED_THREE_UNIT_YLIM,
 )
 from ramms.plotting import plot_geometry
 from ramms.workspace import (
@@ -14,6 +26,7 @@ from ramms.workspace import (
 )
 
 
+@log_call
 def test_find_max_rotation(chain_units:int) -> None:
     if chain_units == 2:
         chain = make_two_unit_chain()
@@ -29,6 +42,8 @@ def test_find_max_rotation(chain_units:int) -> None:
 
     print(f"max rotation: {theta_deg}")
 
+
+@log_call
 def test_find_max_rotation_unit_chain() -> None:
     chain = make_two_unit_chain()
     result = find_right_max_rotation(chain, verbose=False)
@@ -36,6 +51,7 @@ def test_find_max_rotation_unit_chain() -> None:
     print(f"max rotation: {theta_deg}")
 
 
+@log_call
 def show_rotation_result(chain, result, title: str) -> None:
     plot_geometry(
         chain,
@@ -44,9 +60,12 @@ def show_rotation_result(chain, result, title: str) -> None:
             f"theta = {result['theta_deg']:.2f} deg, "
             f"z = {result['z_shift']:.2f} mm"
         ),
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
     )
 
 
+@log_call
 def check_rotation_limits() -> None:
     chain = make_two_unit_chain()
 
@@ -64,6 +83,7 @@ def check_rotation_limits() -> None:
     show_rotation_result(chain, left_thick, "Maximum Left Rotation with Offset to Match Physical System")
 
 
+@log_call
 def check_vertical_limits() -> None:
     chain = make_two_unit_chain()
     vertical_contact_offset = (chain.node_diameter/2)
@@ -80,9 +100,12 @@ def check_vertical_limits() -> None:
                     f"{label} Vertical Position — offset {contact_offset:.1f} mm\n"
                     f"z shift = {result['z_shift']:.2f} mm"
                 ),
+                node_diameter=NODE_DIAMETER_PLOT,
+                segment_line_width=SEG_LINE_WIDTH,
             )
 
 
+@log_call
 def test_three_unit_jamming() -> None:
     three_unit_chain = RAMM_Chain.generate(
         n_units=3,
@@ -102,15 +125,18 @@ def test_three_unit_jamming() -> None:
 
     plot_geometry(
         three_unit_chain,
-        plot_title="3-Unit Candidate Jamming Configuration"
+        plot_title="3-Unit Candidate Jamming Configuration",
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
     )
 
 
-def main() -> None:
+def run_workspace_tests() -> None:
     #test_find_max_rotation(3)
     #check_rotation_limits()
     #check_vertical_limits()
     test_three_unit_jamming()
 
+
 if __name__ == "__main__":
-    main()
+    run_workspace_tests()

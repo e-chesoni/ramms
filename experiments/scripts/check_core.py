@@ -1,8 +1,9 @@
 """Manual checks derived from the notebook's chain-creation sections."""
 
+from ramms.logger import log_call
 from _fixtures import make_four_unit_chain, make_two_unit_chain
 
-
+@log_call
 def describe_chain(chain, name: str) -> None:
     print(f"\n{name}:")
     for index, unit in enumerate(chain.units):
@@ -18,8 +19,8 @@ def describe_chain(chain, name: str) -> None:
             label = getattr(strut, "long_name", strut)
             print(f"    {label}")
 
-
-def main() -> None:
+@log_call
+def core_test() -> None:
     two_unit_chain = make_two_unit_chain()
     four_unit_chain = make_four_unit_chain()
 
@@ -41,4 +42,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    core_test()

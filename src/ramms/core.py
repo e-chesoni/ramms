@@ -6,7 +6,7 @@ import math
 from enum import Enum
 
 from .exceptions import InvalidRAMMGeometryError
-
+from .logger import log_call
 
 class UnitType(Enum):
     RAILED = "railed"

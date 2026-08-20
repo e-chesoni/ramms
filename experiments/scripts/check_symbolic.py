@@ -2,6 +2,7 @@
 
 import sympy as sp
 
+from ramms.logger import log_call
 from ramms.symbolic import (
     get_node_segment_symbolic_gap,
     get_symbolic_gap_general,
@@ -9,12 +10,13 @@ from ramms.symbolic import (
 
 from _fixtures import make_two_unit_chain
 
-
+@log_call
 def show(label: str, expression) -> None:
     print(f"\n{label}:")
     sp.pprint(expression)
 
 
+@log_call
 def main() -> None:
     symbolic_gap = get_symbolic_gap_general()
     show("Symbolic gap A", symbolic_gap.A)

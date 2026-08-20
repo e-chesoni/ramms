@@ -16,7 +16,6 @@ import re
 import pprint
 import math
 from enum import Enum
-from plotly.subplots import make_subplots
 from collections import Counter
 from scipy.optimize import root
 from IPython.display import display # for printing things in LaTex
@@ -25,9 +24,11 @@ from dataclasses import dataclass
 from scipy.optimize import root
 from scipy.optimize import least_squares
 
-from ramms.symbolic import get_candidate_gaps
+from .logger import *
+from .symbolic import get_candidate_gaps
 
 
+@log_call
 def configuration_is_valid(
     chain,
     contact_tolerance=1e-6,
@@ -50,6 +51,7 @@ def configuration_is_valid(
     return True
 
 
+@log_call
 def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_active_gap_details=False):
     """
     Compute the Jacobian of the active gap vector.

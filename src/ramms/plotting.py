@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 plt.style.use("seaborn-v0_8-whitegrid")
 from plotly.subplots import make_subplots
 
+from .logger import *
 from .core import UnitType
 
 
+@log_call
 def plot_geometry(
     chain,
     ax=None,
@@ -142,6 +144,7 @@ def plot_geometry(
     return ax
 
 
+@log_call
 def plot_gap(chain, gap):
     """
     Plot a RAMM chain and overlay a calculated gap in red.
