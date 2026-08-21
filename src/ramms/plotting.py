@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use("seaborn-v0_8-whitegrid")
 from plotly.subplots import make_subplots
@@ -15,7 +16,9 @@ def plot_geometry(
     xlim=None,
     ylim=None,
     node_diameter=None,
-    segment_line_width=None
+    segment_line_width=None,
+    rail_visual_offset=0.0,
+    rail_visual_shorten=0.0,
 ):
     """
     Plot a RAMM chain.
@@ -60,6 +63,71 @@ def plot_geometry(
 
             y1, z1 = segment.node_1.coordinates
             y2, z2 = segment.node_2.coordinates
+
+            # visual aid
+            if segment.segment_type == "rail":
+
+                # Direction along the rail
+                dy = y2 - y1
+                dz = z2 - z1
+                length = np.sqrt(dy**2 + dz**2)
+
+                uy = dy / length
+                uz = dz / length
+
+                # Unit normal perpendicular to the rail
+                ny = -uz
+                nz = uy
+
+                # ---------------------------------------------------------
+                # Determine which direction is outward from the unit
+                # ---------------------------------------------------------
+
+                unit_index = segment.node_1.unit_index
+                unit = chain.units[unit_index]
+
+                # Use the unit's bottom/top centerline as its approximate center
+                center_y = (
+                    unit.bottom_node.coordinates[0]
+                    + unit.top_node.coordinates[0]
+                ) / 2
+
+                center_z = (
+                    unit.bottom_node.coordinates[1]
+                    + unit.top_node.coordinates[1]
+                ) / 2
+
+                rail_mid_y = (y1 + y2) / 2
+                rail_mid_z = (z1 + z2) / 2
+
+                # Vector from unit center toward rail
+                outward_y = rail_mid_y - center_y
+                outward_z = rail_mid_z - center_z
+
+                # Make normal point outward
+                if ny * outward_y + nz * outward_z < 0:
+                    ny *= -1
+                    nz *= -1
+
+                # ---------------------------------------------------------
+                # Widen rails visually
+                # ---------------------------------------------------------
+
+                y1 += rail_visual_offset * ny
+                z1 += rail_visual_offset * nz
+
+                y2 += rail_visual_offset * ny
+                z2 += rail_visual_offset * nz
+
+                # ---------------------------------------------------------
+                # Shorten rails visually along their own direction
+                # ---------------------------------------------------------
+
+                y1 += rail_visual_shorten * uy
+                z1 += rail_visual_shorten * uz
+
+                y2 -= rail_visual_shorten * uy
+                z2 -= rail_visual_shorten * uz
 
             # Outline
             ax.plot(

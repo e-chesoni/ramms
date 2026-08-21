@@ -139,9 +139,10 @@ def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_ac
 
 
 @log_call
-def get_generalized_gap_vector(point_positions, active_gap_vector, verbose=True):
+def get_generalized_gap_vector(chain, point_positions, active_gap_vector, verbose=True):
     generalized_gap_vector, q = (
         express_gaps_in_generalized_coordinates(
+            chain,
             active_gap_vector,
             point_positions,
         )

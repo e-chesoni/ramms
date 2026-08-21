@@ -14,6 +14,8 @@ from _fixtures import (
     make_three_unit_chain,
     NODE_DIAMETER_PLOT,
     SEG_LINE_WIDTH,
+    RAIL_VISUAL_OFFSET,
+    RAIL_VISUAL_SHORTTEN,
     XLIM,
     TWO_UNIT_YLIM,
     THREE_UNIT_YLIM,
@@ -58,7 +60,6 @@ def check_node_segment_gaps() -> None:
 @log_call
 def check_three_unit_segment_gap(rotation_degrees: float) -> None:
     chain = make_three_unit_chain(
-        node_diameter=6.0,
         offsets=((0, 8.2), (0, 16)),
     )
 
@@ -69,6 +70,8 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
         ylim=THREE_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
     rotate_with_cascade(
@@ -103,6 +106,8 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
         ylim=ROTATED_THREE_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
 @log_call

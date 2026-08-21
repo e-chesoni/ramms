@@ -83,6 +83,7 @@ def get_nodes_left_to_right(segment, tolerance=1e-9):
 
     return segment.node_2, segment.node_1
 
+
 # for segment-segment gap method
 def _parallel_segments_overlap(
     A,

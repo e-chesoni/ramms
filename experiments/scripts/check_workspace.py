@@ -19,10 +19,10 @@ from _fixtures import (
 )
 from ramms.plotting import plot_geometry
 from ramms.workspace import (
-    find_left_max_rotation,
-    find_right_max_rotation,
+    find_left_limiting_configuration_two_unit,
+    find_right_limiting_configuration_two_unit,
     find_vertical_limit,
-    find_three_unit_jamming_candidate
+    find_limiting_configuration_three_unit
 )
 
 
@@ -37,7 +37,7 @@ def test_find_max_rotation(chain_units:int) -> None:
               f"Number of units requested: {chain_units}"
         )
 
-    result = find_right_max_rotation(chain, verbose=False)
+    result = find_right_limiting_configuration_two_unit(chain, verbose=False)
     theta_deg = result["theta_deg"]
 
     print(f"max rotation: {theta_deg}")
@@ -46,7 +46,7 @@ def test_find_max_rotation(chain_units:int) -> None:
 @log_call
 def test_find_max_rotation_unit_chain() -> None:
     chain = make_two_unit_chain()
-    result = find_right_max_rotation(chain, verbose=False)
+    result = find_right_limiting_configuration_two_unit(chain, verbose=False)
     theta_deg = result["theta_deg"]
     print(f"max rotation: {theta_deg}")
 
@@ -69,17 +69,17 @@ def show_rotation_result(chain, result, title: str) -> None:
 def check_rotation_limits() -> None:
     chain = make_two_unit_chain()
 
-    right_zero = find_right_max_rotation(chain, contact_offset=0.0)
+    right_zero = find_right_limiting_configuration_two_unit(chain, contact_offset=0.0)
     show_rotation_result(chain, right_zero, "Maximum Right Rotation — No Offset")
 
     rotation_contact_offset = ((chain.node_diameter/2) + (chain.strut_width/2))
-    right_thick = find_right_max_rotation(chain, contact_offset=rotation_contact_offset)
+    right_thick = find_right_limiting_configuration_two_unit(chain, contact_offset=rotation_contact_offset)
     show_rotation_result(chain, right_thick, "Maximum Right Rotation with Offset to Match Physical System")
 
-    left_zero = find_left_max_rotation(chain, contact_offset=0.0)
+    left_zero = find_left_limiting_configuration_two_unit(chain, contact_offset=0.0)
     show_rotation_result(chain, left_zero, "Maximum Left Rotation — No Offset")
 
-    left_thick = find_left_max_rotation(chain, contact_offset=rotation_contact_offset)
+    left_thick = find_left_limiting_configuration_two_unit(chain, contact_offset=rotation_contact_offset)
     show_rotation_result(chain, left_thick, "Maximum Left Rotation with Offset to Match Physical System")
 
 
@@ -118,7 +118,7 @@ def test_three_unit_jamming() -> None:
         strut_width=2.0
     )
 
-    result = find_three_unit_jamming_candidate(
+    result = find_limiting_configuration_three_unit(
         chain=three_unit_chain,
         direction="right",
     )

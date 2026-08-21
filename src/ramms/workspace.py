@@ -132,7 +132,7 @@ def get_reference_side(
 # ============================================================================
 # Public API
 # ============================================================================
-def find_right_max_rotation(
+def find_right_limiting_configuration_two_unit(
     chain,
     theta_guess=-38.6,
     z_guess=-1.8,
@@ -330,7 +330,7 @@ def find_right_max_rotation(
     }
 
 
-def find_left_max_rotation(
+def find_left_limiting_configuration_two_unit(
     chain,
     theta_guess=38.6,
     z_guess=-1.8,
@@ -973,13 +973,14 @@ def find_right_segment_segment_contact(
     }
 
 
-def find_two_unit_jamming_candidate(
+def find_limiting_configuration_two_unit(
     chain,
-    direction="right",
+    direction,
     verbose=True,
 ):
     """
     Move a 2-unit chain to its limiting rotational configuration.
+    Rotates right by default.
 
     Parameters
     ----------
@@ -1012,14 +1013,14 @@ def find_two_unit_jamming_candidate(
     contact_offset = chain.node_strut_contact_offset
 
     if direction == "right":
-        result = find_right_max_rotation(
+        result = find_right_limiting_configuration_two_unit(
             chain=chain,
             contact_offset=contact_offset,
             verbose=verbose,
         )
 
     elif direction == "left":
-        result = find_left_max_rotation(
+        result = find_left_limiting_configuration_two_unit(
             chain=chain,
             contact_offset=contact_offset,
             verbose=verbose,
@@ -1045,7 +1046,7 @@ def find_two_unit_jamming_candidate(
     }
 
 
-def find_three_unit_jamming_candidate(
+def find_limiting_configuration_three_unit(
     chain,
     direction="right",
     verbose=True
@@ -1130,14 +1131,14 @@ def find_three_unit_jamming_candidate(
     )
 
     if direction == "right":
-        result = find_right_max_rotation(
+        result = find_right_limiting_configuration_two_unit(
             two_unit_chain,
             contact_offset=node_strut_contact_offset,
             verbose=False
         )
 
     elif direction == "left":
-        result = find_left_max_rotation(
+        result = find_left_limiting_configuration_two_unit(
             two_unit_chain,
             contact_offset=node_strut_contact_offset,
             verbose=False
@@ -1218,4 +1219,60 @@ def find_three_unit_jamming_candidate(
         #"z_shift": z_shift,
         "cascade_result": cascade_result,
         "segment_contact": segment_contact_result
+    }
+
+
+def find_limiting_configuration_four_unit(
+    chain,
+    direction,
+    verbose=True,
+):
+    """
+    Build a four-unit rotational motion-limiting candidate
+    from the corresponding three-unit candidate.
+    """
+
+    if len(chain.units) != 4:
+        raise ValueError(
+            "find_four_unit_jamming_candidate() "
+            "requires a four-unit chain."
+        )
+
+    if direction != "right":
+        raise NotImplementedError(
+            "Only right rotation is currently implemented."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Put Units 0-2 into the three-unit candidate
+    # ---------------------------------------------------------
+
+    three_unit_result = find_limiting_configuration_three_unit(
+        chain=chain,
+        direction=direction,
+        verbose=verbose,
+    )
+
+    # ---------------------------------------------------------
+    # 2. Position Unit 3 downward relative to Unit 2
+    # ---------------------------------------------------------
+
+    # TODO:
+    # move Unit 3 along the local chain direction until
+    # it reaches its lower allowable position
+
+    # ---------------------------------------------------------
+    # 3. Rotate Unit 3 to the right until contact
+    # ---------------------------------------------------------
+
+    # Target contact:
+    # segment 3B3L against node 2T
+
+    # TODO:
+    # rotate/solve until the node-segment clearance is zero
+
+    return {
+        "success": True,
+        "direction": direction,
+        "three_unit_result": three_unit_result,
     }
