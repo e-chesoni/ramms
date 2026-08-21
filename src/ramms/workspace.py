@@ -28,7 +28,10 @@ from scipy.optimize import least_squares
 from .contact import get_node_segment_gap, get_segment_segment_distance
 from .exceptions import InvalidRAMMGeometryError
 from .core import RAMM_Chain
-from .kinematics import rotate_with_cascade
+from .kinematics import (
+    _translate_units_from,
+    propagate_free_unit_rotation,
+)
 from .mobility import configuration_is_valid
 
 
@@ -127,7 +130,6 @@ def get_reference_side(
         )
 
     return 1.0 if gap > 0 else -1.0
-
 
 # ============================================================================
 # Public API
@@ -748,28 +750,29 @@ def find_vertical_limit(
 
 def find_right_segment_segment_contact(
     chain,
-    moving_unit_index=2,
+    lower_unit_index,
     dz_guess=-8.0,
     dz_bounds=(-30.0, 0.0),
     contact_tolerance=1e-6,
     verbose=True
 ):
     """
-    Move the top RAILED unit downward until the skip-level
-    segment pair reaches physical contact.
+    Move the upper skip-level RAILED unit downward until the
+    selected segment pair reaches physical contact.
 
     Assumptions
     -----------
     The chain is already in the max-right configuration for
-    Units 0 and 1.
+    the relevant lower subset.
 
     Target contact
     --------------
-        Unit 0 segment: 0T0R
-        Unit 2 segment: 2B2L
+        Lower RAILED unit segment:  T -> R
+        Upper RAILED unit segment:  B -> L
 
     The segments must already be parallel. This method only
-    translates Unit 2 vertically; it does not rotate it.
+    translates the upper skip-level unit vertically; it does not
+    rotate it.
 
     Physical segment contact occurs when:
 
@@ -777,16 +780,24 @@ def find_right_segment_segment_contact(
             = chain.segment_segment_contact_offset
     """
 
+    moving_unit_index = lower_unit_index + 2
+
+    if moving_unit_index >= len(chain.units):
+        raise ValueError(
+            "No skip-level unit exists above "
+            f"Unit {lower_unit_index}."
+        )
+
     # ---------------------------------------------------------
     # 1. Get the two target segments
     # ---------------------------------------------------------
 
     fixed_segment = chain.get_segment_by_descriptor(
-        "0T0R"
+        f"{lower_unit_index}T{lower_unit_index}R"
     )
 
     moving_segment = chain.get_segment_by_descriptor(
-        "2B2L"
+        f"{moving_unit_index}B{moving_unit_index}L"
     )
 
     contact_offset = (
@@ -812,9 +823,11 @@ def find_right_segment_segment_contact(
 
     if not initial_result["parallel"]:
         raise InvalidRAMMGeometryError(
-            "Segments 0T0R and 2B2L are not parallel. "
-            "Vertical translation alone cannot create the "
-            "requested contact."
+            f"Segments "
+            f"{lower_unit_index}T{lower_unit_index}R and "
+            f"{moving_unit_index}B{moving_unit_index}L "
+            "are not parallel. Vertical translation alone "
+            "cannot create the requested contact."
         )
 
     # ---------------------------------------------------------
@@ -828,20 +841,20 @@ def find_right_segment_segment_contact(
             starting_coordinates
         )
 
-        # Move only Unit 2.
-        chain.translate(
-            unit_index=moving_unit_index,
+        # Move the upper skip-level unit and everything above it.
+        _translate_units_from(
+            chain,
+            start_unit_index=moving_unit_index,
             dy=0.0,
-            dz=dz,
-            verbose=False
+            dz=dz
         )
 
         fixed_segment = chain.get_segment_by_descriptor(
-            "0T0R"
+            f"{lower_unit_index}T{lower_unit_index}R"
         )
 
         moving_segment = chain.get_segment_by_descriptor(
-            "2B2L"
+            f"{moving_unit_index}B{moving_unit_index}L"
         )
 
         result = get_segment_segment_distance(
@@ -962,6 +975,8 @@ def find_right_segment_segment_contact(
     return {
         "success": valid,
         "solver_success": solution.success,
+        "lower_unit_index": lower_unit_index,
+        "moving_unit_index": moving_unit_index,
         "dz": dz,
         "contact_offset": contact_offset,
         "perpendicular_distance": (
@@ -971,7 +986,6 @@ def find_right_segment_segment_contact(
         "overlap": final_result["overlap"],
         "solution": solution
     }
-
 
 def find_limiting_configuration_two_unit(
     chain,
@@ -1048,12 +1062,13 @@ def find_limiting_configuration_two_unit(
 
 def find_limiting_configuration_three_unit(
     chain,
+    start_unit_index=0,
     direction="right",
     verbose=True
 ):
     """
     Construct the first-stage candidate jamming configuration
-    for a 3-unit chain.
+    for a 3-unit subset of a chain.
 
     Workflow
     --------
@@ -1069,20 +1084,35 @@ def find_limiting_configuration_three_unit(
     direction = direction.lower()
     print(f"direction: {direction}")
 
+    # Record the sequence of motions actually applied to the chain.
+    motions = []
+
+    # Indices of the three-unit subset.
+    unit_0_index = start_unit_index
+    unit_1_index = start_unit_index + 1
+    unit_2_index = start_unit_index + 2
+
+    if unit_2_index >= len(chain.units):
+        raise ValueError(
+            "The requested three-unit subset extends "
+            "beyond the end of the chain."
+        )
+
     # ---------------------------------------------------------
     # 1. Determine the actual Unit 0 -> Unit 1 offset
     # ---------------------------------------------------------
 
-    coords_0B = chain.units[0].bottom_node.coordinates
-    coords_1B = chain.units[1].bottom_node.coordinates
-    coords_2B = chain.units[2].bottom_node.coordinates
+    coords_0B = chain.units[unit_0_index].bottom_node.coordinates
+    coords_1B = chain.units[unit_1_index].bottom_node.coordinates
+    coords_2B = chain.units[unit_2_index].bottom_node.coordinates
 
     if verbose:
         print("Initial bottom node coordinates for each unit:\n"
-            f"unit_0: {coords_0B}\n"
-            f"unit_1: {coords_1B}\n"
-            f"unit_2: {coords_2B}\n"
+            f"unit_{unit_0_index}: {coords_0B}\n"
+            f"unit_{unit_1_index}: {coords_1B}\n"
+            f"unit_{unit_2_index}: {coords_2B}\n"
         )
+
     # ---------------------------------------------------------
     # 5. Apply the solved rotation WITH cascade
     #
@@ -1105,8 +1135,7 @@ def find_limiting_configuration_three_unit(
             f"node-strut: {node_strut_contact_offset}\n"
             f"segment-segment: {segment_segment_contact_offset}"
         )
-    #theta_deg = 38.66
-    #theta_deg = 38.65980825409009
+    
     # TODO: run find max rotation to get theta_deg
     # ---------------------------------------------------------
     # Find the Unit 0-1 limiting configuration on a TEMPORARY
@@ -1151,7 +1180,9 @@ def find_limiting_configuration_three_unit(
 
     if not result["success"]:
         raise InvalidRAMMGeometryError(
-            "Could not find the Unit 0-1 limiting configuration."
+            f"Could not find the Unit "
+            f"{unit_0_index}-{unit_1_index} "
+            "limiting configuration."
         )
 
     theta_deg = result["theta_deg"]
@@ -1162,28 +1193,40 @@ def find_limiting_configuration_three_unit(
         print(f"  theta = {theta_deg:.6f}°")
         print(f"  z shift = {z_shift:.6f} mm")
 
-
     # ---------------------------------------------------------
     # Apply the vertical shift from the 2-unit solution.
     # ---------------------------------------------------------
 
     chain.translate(
-        unit_index=1,
+        unit_index=unit_1_index,
         dy=0.0,
         dz=z_shift,
         verbose=verbose
     )
 
-    pivot = chain.units[1].bottom_node
+    motions.append({
+        "type": "translate",
+        "unit_index": unit_1_index,
+        "dy": 0.0,
+        "dz": z_shift,
+    })
 
-    cascade_result = rotate_with_cascade(
+    pivot = chain.units[unit_1_index].bottom_node
+
+    cascade_result = propagate_free_unit_rotation(
         chain=chain,
-        unit_index=1,
+        unit_index=unit_1_index,
         pivot=pivot,
         degrees=theta_deg,
         constraint_validator=configuration_is_valid, # why are all the rail gaps flipped?
         verbose=False
     )
+
+    motions.append({
+        "type": "propagate_free_unit_rotation",
+        "unit_index": unit_1_index,
+        "degrees": cascade_result["actual_degrees"],
+    })
 
     if verbose:
         print(
@@ -1203,9 +1246,18 @@ def find_limiting_configuration_three_unit(
     segment_contact_result = (
         find_right_segment_segment_contact(
             chain=chain,
+            lower_unit_index=unit_0_index,
             verbose=verbose
         )
     )
+
+    motions.append({
+        "type": "translate_from",
+        "start_unit_index": unit_2_index,
+        "dy": 0.0,
+        "dz": segment_contact_result["dz"],
+    })
+
     # ---------------------------------------------------------
     # 8. Return the solved information
     # ---------------------------------------------------------
@@ -1213,12 +1265,11 @@ def find_limiting_configuration_three_unit(
     return {
         "success": True,
         "direction": direction,
-        #"lower_offset": lower_offset,
-        #"two_unit_solution": lower_limit,
-        "theta_deg": theta_deg,
-        #"z_shift": z_shift,
+        "start_unit_index": start_unit_index,
+        "motions": motions,
+        "two_unit_solution": result,
         "cascade_result": cascade_result,
-        "segment_contact": segment_contact_result
+        "segment_contact_result": segment_contact_result,
     }
 
 

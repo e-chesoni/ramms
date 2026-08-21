@@ -6,7 +6,7 @@ from ramms.contact import (
     get_segment_segment_distance,
 )
 from ramms.plotting import plot_gap, plot_geometry
-from ramms.kinematics import rotate_with_cascade
+from ramms.kinematics import propagate_free_unit_rotation
 from ramms.mobility import configuration_is_valid
 
 from _fixtures import (
@@ -74,7 +74,7 @@ def check_three_unit_segment_gap(rotation_degrees: float) -> None:
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
-    rotate_with_cascade(
+    propagate_free_unit_rotation(
         chain,
         unit_index=1,
         pivot=chain.units[1].bottom_node,

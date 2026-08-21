@@ -176,6 +176,7 @@ def get_generalized_jacobian(generalized_gap_vector, q, verbose=True):
 
     return generalized_jacobian
 
+
 @log_call
 def evaluate_candidate_gaps(generalized_gap_vector, q, verbose=True):
     candidate_state = {

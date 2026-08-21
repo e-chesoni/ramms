@@ -27,12 +27,17 @@ from _fixtures import (
 )
 from ramms.core import RAMM_Chain
 from ramms.plotting import plot_geometry
+from ramms.kinematics import (
+    enforce_shared_rail_node_spacing,
+    propagate_free_unit_rotation,
+)
 from ramms.symbolic import (
     get_candidate_gaps, 
     get_active_gap_vector,
     express_gaps_in_generalized_coordinates,
 )
 from ramms.mobility import (
+    configuration_is_valid,
     get_gap_jacobian,
     get_generalized_gap_vector,
     get_generalized_jacobian,
@@ -141,7 +146,7 @@ def check_three_unit_mobility() -> None:
         strut_width=2.0
     )
 
-    result = find_limiting_configuration_three_unit(
+    _ = find_limiting_configuration_three_unit(
         chain=three_unit_chain,
         direction="right",
     )
@@ -243,7 +248,60 @@ def check_four_unit_mobility():
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
+    DEFAULT_ROTATION_DEG = 38.66 
+
+    _ = find_limiting_configuration_three_unit(
+        chain=four_unit_chain,
+        start_unit_index=0,
+        direction="right",
+    )
+
+    print(
+        "\nValid before rotating Unit 3:",
+        configuration_is_valid(four_unit_chain)
+    )
+
+    enforce_shared_rail_node_spacing(
+        four_unit_chain,
+        railed_unit_index=2,
+    )
+
+    print(
+        "\nValid before rotating Unit 3:",
+        configuration_is_valid(four_unit_chain)
+    )
+
+    plot_geometry(
+        four_unit_chain,
+        plot_title="After First Cascading Rotation About Unit 1's Bottom Node",
+        xlim=THREE_UNIT_ROTATED_RIGHT_XLIM,
+        ylim=FOUR_UNIT_YLIM,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
+    propagate_free_unit_rotation(
+        four_unit_chain,
+        unit_index=3,
+        pivot=four_unit_chain.units[3].bottom_node,
+        degrees=-DEFAULT_ROTATION_DEG, # make negative to rotate to the right
+        constraint_validator=configuration_is_valid
+    )
+
+    plot_geometry(
+        four_unit_chain,
+        plot_title="After Second Cascading Rotation About Unit 2's Bottom Node",
+        xlim=THREE_UNIT_ROTATED_RIGHT_XLIM,
+        ylim=FOUR_UNIT_YLIM,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
 if __name__ == "__main__":
-    check_two_unit_mobility(direction="right", print_gaps=True)
+    #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
-    #check_four_unit_mobility()
+    check_four_unit_mobility()

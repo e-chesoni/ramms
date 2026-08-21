@@ -118,7 +118,7 @@ def test_three_unit_jamming() -> None:
         strut_width=2.0
     )
 
-    result = find_limiting_configuration_three_unit(
+    _ = find_limiting_configuration_three_unit(
         chain=three_unit_chain,
         direction="right",
     )

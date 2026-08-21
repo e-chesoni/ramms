@@ -7,7 +7,7 @@ from .core import *
 from .logger import *
 
 
-def _get_fractional_centerline_position(
+def _get_free_node_position_along_rail(
         chain,
         free_unit_index,
         railed_unit_index,
@@ -270,7 +270,7 @@ def _validate_free_railed_centerline_constraint(
         Confirm that the FREE top node lies on and between the
         neighboring RAILED unit's bottom-to-top centerline.
         """
-        actual_s = _get_fractional_centerline_position(
+        actual_s = _get_free_node_position_along_rail(
             chain,
             free_unit_index=free_unit_index,
             railed_unit_index=railed_unit_index,
@@ -291,6 +291,86 @@ def _validate_free_railed_centerline_constraint(
                 )
 
         return actual_s
+
+
+def enforce_shared_rail_node_spacing(
+    chain,
+    railed_unit_index,
+    tolerance=1e-6,
+):
+    """
+    Ensure the FREE nodes on either side of an interior RAILED unit
+    do not overlap along the rail centerline.
+    """
+
+    lower_free_index = railed_unit_index - 1
+    upper_free_index = railed_unit_index + 1
+
+    if upper_free_index >= len(chain.units):
+        return (0.0, 0.0)
+
+    railed_unit = chain.units[railed_unit_index]
+
+    rail_bottom = np.asarray(
+        railed_unit.bottom_node.coordinates,
+        dtype=float,
+    )
+
+    rail_top = np.asarray(
+        railed_unit.top_node.coordinates,
+        dtype=float,
+    )
+
+    rail_vector = rail_top - rail_bottom
+    rail_length = np.linalg.norm(rail_vector)
+
+    if rail_length <= tolerance:
+        raise InvalidRAMMGeometryError(
+            f"RAILED Unit {railed_unit_index} has zero-length centerline."
+        )
+
+    rail_direction = rail_vector / rail_length
+
+    lower_node = np.asarray(
+        chain.units[lower_free_index].top_node.coordinates,
+        dtype=float,
+    )
+
+    upper_node = np.asarray(
+        chain.units[upper_free_index].bottom_node.coordinates,
+        dtype=float,
+    )
+
+    # Positions measured along the RAILED unit's local centerline.
+    lower_position = np.dot(
+        lower_node - rail_bottom,
+        rail_direction,
+    )
+
+    upper_position = np.dot(
+        upper_node - rail_bottom,
+        rail_direction,
+    )
+
+    current_spacing = upper_position - lower_position
+    required_spacing = chain.node_diameter
+
+    if current_spacing >= required_spacing - tolerance:
+        return (0.0, 0.0)
+
+    correction = required_spacing - current_spacing
+
+    translation = correction * rail_direction
+    dy, dz = translation
+
+    _translate_units_from(
+        chain,
+        start_unit_index=upper_free_index,
+        dy=dy,
+        dz=dz,
+    )
+
+    return float(dy), float(dz)
 
 
 def _apply_cascading_rotation(
@@ -337,7 +417,7 @@ def _apply_cascading_rotation(
             alignment["dz"]
         )
 
-        actual_s = _get_fractional_centerline_position(
+        actual_s = _get_free_node_position_along_rail(
             chain,
             free_unit_index=unit_index,
             railed_unit_index=railed_unit_index,
@@ -356,7 +436,7 @@ def _apply_cascading_rotation(
 
 
 @log_call
-def rotate_with_cascade(
+def propagate_free_unit_rotation(
     chain,
     unit_index,
     pivot,

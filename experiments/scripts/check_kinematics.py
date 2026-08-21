@@ -4,7 +4,7 @@ import numpy as np
 
 from ramms.logger import log_call
 from ramms.plotting import plot_geometry
-from ramms.kinematics import _get_fractional_centerline_position, rotate_with_cascade
+from ramms.kinematics import _get_free_node_position_along_rail, propagate_free_unit_rotation
 from ramms.mobility import configuration_is_valid
 
 from _fixtures import (
@@ -12,6 +12,8 @@ from _fixtures import (
     make_three_unit_chain,
     NODE_DIAMETER_PLOT,
     SEG_LINE_WIDTH,
+    RAIL_VISUAL_OFFSET,
+    RAIL_VISUAL_SHORTTEN,
     XLIM,
     TWO_UNIT_YLIM,
     THREE_UNIT_YLIM,
@@ -60,6 +62,8 @@ def check_cascading_rotation() -> None:
         ylim=THREE_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
     # get bottom node coordinates to print later
@@ -77,10 +81,10 @@ def check_cascading_rotation() -> None:
     # TODO: consider incoporating sliding along the rail depending on the direction of the force
     # ...like after quals or something...
     
-    #PIVOT = chain.units[1].bottom_node # coordinates are usually (0, z) (in this case (0, 8.2)) -- 7.Aug.2026 
-    PIVOT = (1, 8.2) # change the pivot to just right of the node's center point (so we can get rail contact)
+    PIVOT = chain.units[1].bottom_node # coordinates are usually (0, z) (in this case (0, 8.2)) -- 7.Aug.2026 
+    #PIVOT = (1, 8.2) # change the pivot to just right of the node's center point (so we can get rail contact)
 
-    rotate_with_cascade(
+    propagate_free_unit_rotation(
         chain,
         unit_index=1,
         pivot=PIVOT,
@@ -95,13 +99,15 @@ def check_cascading_rotation() -> None:
         ylim=THREE_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
     print("Unit 1 bottom before:", unit_1_bottom_before)
     print("Unit 2 bottom before:", unit_2_bottom_before)
     print(
         "Fractional position after motion:",
-        _get_fractional_centerline_position(
+        _get_free_node_position_along_rail(
             chain,
             free_unit_index=1,
             railed_unit_index=2,
