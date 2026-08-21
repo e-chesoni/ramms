@@ -26,7 +26,14 @@ from ramms.symbolic import (
     get_active_gap_vector,
     express_gaps_in_generalized_coordinates,
 )
-from ramms.mobility import get_gap_jacobian
+from ramms.mobility import (
+    get_gap_jacobian,
+    get_generalized_gap_vector,
+    get_generalized_jacobian,
+    evaluate_candidate_gaps,
+    analyze_generalized_jacobian,
+    analyze_remaining_motion,
+)
 
 from ramms.workspace import (
     find_three_unit_jamming_candidate,
@@ -100,88 +107,30 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
         print_active_gap_vector=print_active_gap_vec,
     )
 
-    point_positions = get_geometric_point_positions(
-        two_unit_chain
-    )
+    point_positions = two_unit_chain.get_geometric_point_positions()
+    generalized_gap_vector, q = get_generalized_gap_vector(point_positions, active_gap_vector)
 
-    generalized_gap_vector, q = (
-        express_gaps_in_generalized_coordinates(
-            active_gap_vector,
-            point_positions,
-        )
-    )
-
+    # TODO: move to get_generalized_gap_jacobian() function
+    '''
     generalized_jacobian = generalized_gap_vector.jacobian(q)
+    
+        print("\nGeneralized Jacobian:")
+        sp.pprint(generalized_jacobian)
+    
+        print("\nGeneralized Jacobian dimensions:")
+        print(generalized_jacobian.shape)
+    '''
 
-    print("\nGeneralized coordinates:")
-    sp.pprint(q)
-
-    print("\nFree symbols:")
-    print(generalized_gap_vector.free_symbols)
-
-    print("\nGeneralized gap vector:")
-    sp.pprint(generalized_gap_vector)
-
-    print("\nGeneralized Jacobian:")
-    sp.pprint(generalized_jacobian)
-
-    print("\nGeneralized Jacobian dimensions:")
-    print(generalized_jacobian.shape)
-
-    # Sanity check: evaluate the generalized gap vector
-    # at the candidate configuration
-    candidate_state = {
-        q[0]: 0,
-        q[1]: 0,
-    }
-
-    print("\nGeneralized gaps at candidate state:")
-    sp.pprint(
-        generalized_gap_vector
-        .subs(candidate_state)
-        .evalf()
+    generalized_jacobian = get_generalized_jacobian(generalized_gap_vector, q)
+    evaluate_candidate_gaps(generalized_gap_vector, q)
+    print("\n")
+    analysis = analyze_generalized_jacobian(
+        generalized_jacobian,
+        q,
     )
 
-    J_numeric = generalized_jacobian.subs(
-        {
-            q[0]: 0,
-            q[1]: 0,
-        }
-    ).evalf()
-
-    print("\nNumerical generalized Jacobian:")
-    sp.pprint(J_numeric)
-
-    print("\nRank:")
-    print(J_numeric.rank())
-
-
-    J_np = np.array(
-        J_numeric.tolist(),
-        dtype=float,
-    )
-
-    U, singular_values, Vt = np.linalg.svd(
-        J_np,
-        full_matrices=True,
-    )
-
-    print("\nSingular values:")
-    print(singular_values)
-
-    rank = np.linalg.matrix_rank(J_np)
-
-    nullity = J_np.shape[1] - rank
-
-    print("\nNumerical rank:")
-    print(rank)
-
-    print("\nNullity:")
-    print(nullity)
-
-    print("\nRight singular vectors:")
-    print(Vt)
-
+    analyze_remaining_motion(analysis, q)
+    '''
     direction_tests = {
         "+z_1": np.array([1.0, 0.0]),
         "-z_1": np.array([-1.0, 0.0]),
@@ -192,7 +141,7 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
     print("\nDirectional gap-change tests:")
 
     for name, dq in direction_tests.items():
-        delta_g = J_np @ dq
+        delta_g = analysis.jacobian_numeric @ dq
 
         print(f"\n{name}")
 
@@ -205,7 +154,7 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
             )
 
     for name, dq in direction_tests.items():
-        delta_g = J_np @ dq
+        delta_g = analysis.jacobian_numeric @ dq
 
         admissible = np.all(delta_g >= -1e-9)
 
@@ -213,13 +162,7 @@ def check_two_unit_mobility(print_find_candidate_results=False, print_gen_coords
             f"{name}: "
             f"{'ADMISSIBLE' if admissible else 'BLOCKED'}"
         )
-
-    jacobian, coordinates = get_gap_jacobian(
-        active_gap_vector,
-        print_active_gap=print_active_gap_vec,
-        print_active_gap_details=print_active_gap_details,
-    )
-
+    '''
     print("\nClose the plot to exit out of this run.")
 
     plot_geometry(

@@ -1218,6 +1218,32 @@ class RAMM_Chain:
 
         return chain
 
+    def get_geometric_point_positions(self):
+        point_positions = {}
+
+        for unit_index in range(len(self.units)):
+            for node_name in ["B", "L", "R", "T"]:
+                node = self.get_node_by_descriptor(
+                    f"{unit_index}{node_name}"
+                )
+
+                point_positions[node.descriptor] = (
+                    float(node.coordinates[0]),
+                    float(node.coordinates[1]),
+                )
+
+        for unit_index in range(0, len(self.units), 2):
+            for side in ["left", "right"]:
+                rail = self.get_rail(unit_index, side)
+
+                for rail_node in [rail.node_1, rail.node_2]:
+                    point_positions[rail_node.descriptor] = (
+                        float(rail_node.coordinates[0]),
+                        float(rail_node.coordinates[1]),
+                    )
+
+        return point_positions
+
     def rotate(self, unit_index, pivot, degrees):
         print(
             f"Rotating unit {unit_index} around "

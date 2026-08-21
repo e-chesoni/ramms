@@ -25,7 +25,28 @@ from scipy.optimize import root
 from scipy.optimize import least_squares
 
 from .logger import *
-from .symbolic import get_candidate_gaps
+from .symbolic import (
+    get_candidate_gaps,
+    express_gaps_in_generalized_coordinates,
+)
+
+from dataclasses import dataclass
+
+@dataclass
+class MobilityAnalysis:
+    jacobian_numeric: np.ndarray
+    singular_values: np.ndarray
+    rank: int
+    nullity: int
+    right_singular_vectors: np.ndarray
+
+def _classify_gap_change(value, tol=1e-9):
+    if value < -tol:
+        return "PENETRATION"
+    elif value > tol:
+        return "BREAKING"
+    else:
+        return "MAINTAINED"
 
 
 @log_call
@@ -117,5 +138,164 @@ def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_ac
     return active_gap_vector.jacobian(q), q
 
 
-#TODO: convert the jacobian to generalized coordinates
+@log_call
+def get_generalized_gap_vector(point_positions, active_gap_vector, verbose=True):
+    generalized_gap_vector, q = (
+        express_gaps_in_generalized_coordinates(
+            active_gap_vector,
+            point_positions,
+        )
+    )
+    if verbose:
+        print("\nGeneralized coordinates:")
+        sp.pprint(q)
 
+        print("\nSanity Check: Generalized gap vector symbols (should match gen. coords.):")
+        print(generalized_gap_vector.free_symbols)
+
+        print("\nGeneralized gap vector shape:")
+        sp.pprint(generalized_gap_vector.shape)
+
+        print("\nGeneralized gap vector:")
+        sp.pprint(generalized_gap_vector)
+
+    return generalized_gap_vector, q
+
+
+@log_call
+def get_generalized_jacobian(generalized_gap_vector, q, verbose=True):
+    generalized_jacobian = generalized_gap_vector.jacobian(q)
+
+    if verbose:
+        print("\nGeneralized Jacobian dimensions:")
+        print(generalized_jacobian.shape)
+
+        print("\nGeneralized Jacobian:")
+        sp.pprint(generalized_jacobian)
+
+    return generalized_jacobian
+
+@log_call
+def evaluate_candidate_gaps(generalized_gap_vector, q, verbose=True):
+    candidate_state = {
+        coordinate: 0
+        for coordinate in q
+    }
+
+    evaluated_gaps = (
+        generalized_gap_vector
+        .subs(candidate_state)
+        .evalf()
+    )
+
+    if verbose:
+        print("\nGeneralized gaps at candidate state (ideally, these are all aprox. 0):")
+        sp.pprint(evaluated_gaps)
+
+    return evaluated_gaps
+
+
+@log_call
+def analyze_generalized_jacobian(generalized_jacobian, q, verbose=True):
+    # Candidate configuration corresponds to q = 0
+    candidate_state = {
+        coordinate: 0
+        for coordinate in q
+    }
+
+    # Evaluate symbolic Jacobian at candidate configuration
+    J_numeric = (
+        generalized_jacobian
+        .subs(candidate_state)
+        .evalf()
+    )
+
+    # Convert to NumPy for numerical linear algebra
+    J_np = np.array(
+        J_numeric.tolist(),
+        dtype=float,
+    )
+
+    # Singular value decomposition
+    U, singular_values, Vt = np.linalg.svd(
+        J_np,
+        full_matrices=True,
+    )
+
+    # Rank and nullity
+    rank = np.linalg.matrix_rank(J_np)
+    nullity = J_np.shape[1] - rank
+
+    if verbose:
+        print("\nNumerical generalized Jacobian:")
+        sp.pprint(J_numeric)
+
+        print("\nSingular values:")
+        print(singular_values)
+
+        print("\nRank:")
+        print(rank)
+
+        print("\nNullity:")
+        print(nullity)
+
+        print("\nRight singular vectors:")
+        print(Vt)
+
+    return MobilityAnalysis(
+        jacobian_numeric=J_numeric,
+        singular_values=singular_values,
+        rank=rank,
+        nullity=nullity,
+        right_singular_vectors=Vt,
+    )
+
+@log_call
+# for each DoF in q, ask can I move in this direction without penetrating any active contact?
+# if one gap is negative, the whole proposed direction is blocked.
+def analyze_remaining_motion(analysis, q, tol=1e-9, verbose=True):
+    results = {}
+
+   # test positive and negative motions of every variable in q
+    for i, coordinate in enumerate(q):
+        for sign, magnitude in [("+", 1.0), ("-", -1.0)]:
+
+            # vec of zeros corresponding dim to q
+            dq = np.zeros(len(q))
+            # replace one zero with motion (+/- z, y, theta) we want to test
+            dq[i] = magnitude
+
+            # what happens? (first-order change for every active gap)
+            delta_g = analysis.jacobian_numeric @ dq
+
+            # Direction is admissible if no gap penetrates
+            admissible = np.all(delta_g >= -tol)
+
+            name = f"{sign}{coordinate}"
+
+            results[name] = {
+                "dq": dq,
+                "delta_g": delta_g,
+                "admissible": admissible,
+            }
+
+            if verbose:
+                print(f"\n{name}")
+
+                for gap_index, value in enumerate(delta_g):
+                    status = _classify_gap_change(
+                        value,
+                        tol=tol,
+                    )
+
+                    print(
+                        f"  gap {gap_index}: "
+                        f"{value:+.6f} -> {status}"
+                    )
+
+                print(
+                    "  result: "
+                    f"{'ADMISSIBLE' if admissible else 'BLOCKED'}"
+                )
+
+    return results

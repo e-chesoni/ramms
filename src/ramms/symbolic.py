@@ -694,6 +694,7 @@ def get_active_gap_vector(
 
     return active_gap_vector
 
+
 def rigid_point_2d(
     point_default,
     pivot_default,
