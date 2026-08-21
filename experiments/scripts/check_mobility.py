@@ -267,7 +267,32 @@ def check_four_unit_mobility():
     )
 
     print(
-        "\nValid before rotating Unit 3:",
+        "\nValid before shared-rail correction:",
+        configuration_is_valid(four_unit_chain)
+    )
+
+    correction = enforce_shared_rail_node_spacing(
+        four_unit_chain,
+        railed_unit_index=2,
+    )
+
+    print(
+        "\nShared-rail correction:",
+        correction
+    )
+
+    print(
+        "\n1T:",
+        four_unit_chain.units[1].top_node.coordinates
+    )
+
+    print(
+        "3B:",
+        four_unit_chain.units[3].bottom_node.coordinates
+    )
+
+    print(
+        "\nValid after shared-rail correction:",
         configuration_is_valid(four_unit_chain)
     )
 
@@ -281,7 +306,7 @@ def check_four_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
-
+    """
     propagate_free_unit_rotation(
         four_unit_chain,
         unit_index=3,
@@ -300,7 +325,7 @@ def check_four_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
-
+    """
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
