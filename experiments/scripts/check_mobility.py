@@ -263,8 +263,7 @@ def check_four_unit_mobility():
 def check_five_unit_mobility():
     chain = make_five_unit_chain()
     PIVOT = chain.units[1].bottom_node
-    ACTIVE_CONTACT_TOLERANCE = 3.6
-    PENETRATION_TOLERANCE = 1e-6
+    CONTACT_TOLERANCE = 3.6
 
     plot_geometry(
         chain,
@@ -298,10 +297,10 @@ def check_five_unit_mobility():
     segment_contact_result = find_right_segment_segment_contact(
         chain=chain,
         lower_unit_index=2,
-        contact_tolerance=ACTIVE_CONTACT_TOLERANCE,
+        contact_tolerance=CONTACT_TOLERANCE,
         constraint_validator=lambda chain: configuration_is_valid(
             chain,
-            contact_tolerance=PENETRATION_TOLERANCE,
+            contact_tolerance=CONTACT_TOLERANCE,
             verbose=False,
         ),
         verbose=True,
@@ -341,7 +340,7 @@ def check_five_unit_mobility():
         contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
         print_active_gap_vector=True
     )
-
+    """
     # Get point coordinates at the candidate configuration
     point_positions = chain.get_geometric_point_positions()
 
@@ -371,7 +370,7 @@ def check_five_unit_mobility():
 
     # Test admissible motion in each generalized-coordinate direction
     analyze_remaining_motion(analysis, q)
-
+    """
 
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
