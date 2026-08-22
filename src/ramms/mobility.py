@@ -27,6 +27,7 @@ from scipy.optimize import least_squares
 from .logger import *
 from .symbolic import (
     get_candidate_gaps,
+    get_active_gap_vector,
     express_gaps_in_generalized_coordinates,
 )
 
@@ -312,3 +313,48 @@ def analyze_remaining_motion(analysis, q, tol=1e-9, verbose=True):
                 )
 
     return results
+
+def anayze_motion_limiting_candidate(chain):
+    # find candidate gaps and active gap vector
+    candidate_gaps = get_candidate_gaps(
+        chain
+    )
+    
+    active_gap_vector = get_active_gap_vector(
+        candidate_gaps,
+        contact_offset=(
+            chain.node_strut_contact_offset
+        ),
+        contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
+        print_active_gap_vector=True
+    )
+
+    # Get point coordinates at the candidate configuration
+    point_positions = chain.get_geometric_point_positions()
+
+    # Express active gaps in generalized coordinates
+    generalized_gap_vector, q = get_generalized_gap_vector(
+        chain,
+        point_positions,
+        active_gap_vector
+    )
+
+    # Differentiate gaps to obtain the constraint Jacobian
+    generalized_jacobian = get_generalized_jacobian(
+        generalized_gap_vector,
+        q
+    )
+
+    # Verify active gaps are zero at the candidate state
+    evaluate_candidate_gaps(generalized_gap_vector, q)
+
+    print("\n")
+
+    # Compute SVD, rank, and nullity
+    analysis = analyze_generalized_jacobian(
+        generalized_jacobian,
+        q,
+    )
+
+    # Test admissible motion in each generalized-coordinate direction
+    analyze_remaining_motion(analysis, q)

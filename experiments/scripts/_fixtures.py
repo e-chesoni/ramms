@@ -11,6 +11,7 @@ RAIL_VISUAL_SHORTTEN = 2
 # graph dimentions to match physical geometry
 THREE_UNIT_YLIM = (-5, 50)
 FOUR_UNIT_YLIM = (-5, 65)
+FIVE_UNIT_YLIM = (-5, 80)
 XLIM = (-15, 15)
 XLIM_WIDE = (-25, 25)
 TWO_UNIT_ROTATED_RIGHT_XLIM=(-15, 25) # TODO: will need to reverse this for left rotation
@@ -53,7 +54,7 @@ def make_three_unit_chain(node_diameter: float = 2.0, offsets=((0, 8.2), (0, 14)
     )
 
     return RAMM_Chain.generate(
-        n_units=3,
+        n_units=total_units,
         start_position=(0, 0),
         offsets=list(offsets),
         node_diameter=node_diameter,
@@ -74,13 +75,13 @@ def make_four_unit_chain(node_diameter: float = 2.0, offsets=((0, 12), (0, 13), 
     )
     
     return RAMM_Chain.generate(
-        n_units=4,
-        start_position=(0, 0),
+        n_units=total_units,
+        start_position=starting_pos_0B,
         offsets=list(offsets),
         node_diameter=node_diameter,
     )
 
-def make_five_unit_chain(node_diameter: float = 2.0, offsets=((0, 8.2), (0, 14), (0, 20), (0, 26))) -> RAMM_Chain:
+def make_five_unit_chain(node_diameter: float = 2.0, offsets=((0, 12), (0, 13), (0, 13), (0, 13))) -> RAMM_Chain:
     total_units = 5
     starting_pos_0B = (0,0)
     
@@ -95,8 +96,8 @@ def make_five_unit_chain(node_diameter: float = 2.0, offsets=((0, 8.2), (0, 14),
     )
     
     return RAMM_Chain.generate(
-        n_units=4,
-        start_position=(0, 0),
+        n_units=total_units,
+        start_position=starting_pos_0B,
         offsets=list(offsets),
         node_diameter=node_diameter,
     )

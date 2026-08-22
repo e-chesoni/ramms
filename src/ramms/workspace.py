@@ -30,6 +30,7 @@ from .exceptions import InvalidRAMMGeometryError
 from .core import RAMM_Chain
 from .kinematics import (
     _translate_units_from,
+    enforce_shared_rail_node_spacing,
     propagate_free_unit_rotation,
 )
 from .mobility import configuration_is_valid
@@ -375,6 +376,7 @@ def find_right_limiting_configuration_two_unit(
         "residual_norm": residual_norm,
         "solution": solution
     }
+
 
 def find_left_limiting_configuration_two_unit(
     chain,
@@ -1313,7 +1315,7 @@ def find_limiting_configuration_three_unit(
     # ---------------------------------------------------------
 
     return {
-        "success": True,
+        "success": True, # TODO: placeholder for now; should be updating this
         "direction": direction,
         "start_unit_index": start_unit_index,
         "motions": motions,
@@ -1325,7 +1327,9 @@ def find_limiting_configuration_three_unit(
 
 def find_limiting_configuration_four_unit(
     chain,
-    direction,
+    start_index=0,
+    direction="right",
+    contact_tolerance=1e-6,
     verbose=True,
 ):
     """
@@ -1344,36 +1348,81 @@ def find_limiting_configuration_four_unit(
             "Only right rotation is currently implemented."
         )
 
-    # ---------------------------------------------------------
-    # 1. Put Units 0-2 into the three-unit candidate
-    # ---------------------------------------------------------
-
     three_unit_result = find_limiting_configuration_three_unit(
         chain=chain,
-        direction=direction,
-        verbose=verbose,
+        start_unit_index=start_index,
+        direction="right",
+        contact_tolerance=contact_tolerance,
     )
 
-    # ---------------------------------------------------------
-    # 2. Position Unit 3 downward relative to Unit 2
-    # ---------------------------------------------------------
+    if verbose:
+        print(
+            "\nValid before shared-rail correction:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
 
-    # TODO:
-    # move Unit 3 along the local chain direction until
-    # it reaches its lower allowable position
+    correction = enforce_shared_rail_node_spacing(
+        chain,
+        railed_unit_index=start_index+2,
+    )
+    # The "first unit" is unit 0; Python is zero indexed
+    subset_unit_1_idx = start_index + 1
+    subset_unit_2_idx = start_index + 2
+    subset_unit_3_idx = start_index + 3
 
-    # ---------------------------------------------------------
-    # 3. Rotate Unit 3 to the right until contact
-    # ---------------------------------------------------------
+    if verbose:
+        print(
+            "\nShared-rail correction:",
+            correction
+        )
+        # unit 1 top node coordinates
+        print(
+            f"\n{subset_unit_1_idx}T:",
+            chain.units[subset_unit_1_idx].top_node.coordinates
+        )
+        # unit 3 bottom node coordinates
+        print(
+            f"{subset_unit_3_idx}B:",
+            chain.units[subset_unit_3_idx].bottom_node.coordinates
+        )
 
-    # Target contact:
-    # segment 3B3L against node 2T
+        print(
+            "\nValid after shared-rail correction:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
 
-    # TODO:
-    # rotate/solve until the node-segment clearance is zero
+    last_two_unit_subset_result = find_right_limiting_configuration_two_unit(
+        chain=chain,
+        lower_unit_index=subset_unit_2_idx,
+        moving_unit_index=subset_unit_3_idx,
+        contact_offset=chain.node_strut_contact_offset,
+        contact_tolerance=contact_tolerance,
+        verbose=True,
+    )
+
+    if verbose:
+        print(
+            "\nUnit 2-3 limiting solution:"
+            f"\n  theta = {last_two_unit_subset_result['theta_deg']:.6f}°"
+            f"\n  z shift = {last_two_unit_subset_result['z_shift']:.6f} mm"
+        )
+
+        print(
+            "\nValid after Unit 3 limiting rotation:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
 
     return {
-        "success": True,
+        "success": True, # TODO: placeholder for now; should be updating this
         "direction": direction,
-        "three_unit_result": three_unit_result,
+        "three_unit_solution": three_unit_result,
     }

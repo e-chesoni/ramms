@@ -1020,8 +1020,9 @@ class RAMM_Chain:
             Bottom-node position (y, z) of Unit 0.
 
         offsets:
-            One offset, two alternating offsets, or exactly
-            n_units - 1 offsets.
+            One offset or a sequence of offsets. If fewer than
+            n_units - 1 offsets are provided, the sequence is
+            repeated cyclically to construct the chain.
 
         rotations:
             None, one repeated rotation, two alternating rotations,
@@ -1058,6 +1059,7 @@ class RAMM_Chain:
                 for value in offsets
             )
         ):
+            # A single (dy, dz) offset is repeated for the chain.
             expanded_offsets = [
                 offsets
                 for _ in range(required_offset_count)
@@ -1070,48 +1072,25 @@ class RAMM_Chain:
                     "for a chain containing multiple units."
                 )
 
-            if len(offsets) == 1:
-                expanded_offsets = [
-                    offsets[0]
-                    for _ in range(required_offset_count)
-                ]
-
-            elif len(offsets) == 2:
-                expanded_offsets = [
-                    offsets[i % 2]
-                    for i in range(required_offset_count)
-                ]
-
-            elif len(offsets) == required_offset_count:
-                expanded_offsets = list(offsets)
-
-            else:
+            if len(offsets) > required_offset_count:
                 raise ValueError(
-                    "offsets must contain one offset, "
-                    "two alternating offsets, or exactly "
-                    f"{required_offset_count} offsets."
+                    f"Received {len(offsets)} offsets, but a "
+                    f"{n_units}-unit chain requires at most "
+                    f"{required_offset_count}."
                 )
+
+            # Repeat the supplied offset pattern as needed.
+            expanded_offsets = [
+                offsets[i % len(offsets)]
+                for i in range(required_offset_count)
+            ]
 
         else:
             raise TypeError(
                 "offsets must be an offset tuple or a sequence "
                 "of offset tuples."
             )
-
-        for offset in expanded_offsets:
-            if (
-                not isinstance(offset, (list, tuple))
-                or len(offset) != 2
-                or not all(
-                    isinstance(value, (int, float))
-                    for value in offset
-                )
-            ):
-                raise TypeError(
-                    "Each offset must be a numeric "
-                    "(delta_y, delta_z) pair."
-                )
-
+        
         # ---------------------------------------------------------
         # Expand rotations
         # ---------------------------------------------------------
