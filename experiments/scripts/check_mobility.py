@@ -135,16 +135,8 @@ def check_three_unit_mobility() -> None:
     """
 
     # generate chain
-    three_unit_chain = RAMM_Chain.generate(
-        n_units=3,
-        start_position=(0, 0),
-        offsets=[
-            (0, 8.2),
-            (0, 16)
-        ],
-        node_diameter=2.0,
-        strut_width=2.0
-    )
+    three_unit_chain = make_three_unit_chain()
+    CONTACT_TOLERANCE = 1e-6 # TODO: dont force 3.6; try new dz,dy solver
 
     # find right rotated motion limited candidate config
     _ = find_limiting_configuration_three_unit(
@@ -197,7 +189,7 @@ def check_three_unit_mobility() -> None:
     analyze_remaining_motion(analysis, q)   
     """
 
-    anayze_motion_limiting_candidate(three_unit_chain)
+    anayze_motion_limiting_candidate(three_unit_chain, CONTACT_TOLERANCE)
 
     # Plot final configuration
     print(
@@ -374,6 +366,6 @@ def check_five_unit_mobility():
 
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
-    #check_three_unit_mobility()
+    check_three_unit_mobility()
     #check_four_unit_mobility()
-    check_five_unit_mobility()
+    #check_five_unit_mobility()

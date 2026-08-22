@@ -314,7 +314,7 @@ def analyze_remaining_motion(analysis, q, tol=1e-9, verbose=True):
     return results
 
 
-def anayze_motion_limiting_candidate(chain):
+def anayze_motion_limiting_candidate(chain, contact_tolerance):
     # find candidate gaps and active gap vector
     candidate_gaps = get_candidate_gaps(
         chain
@@ -325,7 +325,7 @@ def anayze_motion_limiting_candidate(chain):
         contact_offset=(
             chain.node_strut_contact_offset
         ),
-        contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
+        contact_tolerance=contact_tolerance, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
         print_active_gap_vector=True
     )
 
