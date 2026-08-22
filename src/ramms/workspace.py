@@ -38,34 +38,33 @@ from .mobility import configuration_is_valid
 # ============================================================================
 # Helpers
 # ============================================================================
-def set_two_unit_configuration(
+def set_adjacent_unit_configuration(
     chain,
+    moving_unit_index,
+    starting_coordinates,
     theta_deg,
     z_shift,
-    default_offset=10
 ):
     """
-    Recreate the old transform_top_unit_from_reference():
-
-    - reset to the default configuration
-    - rotate unit 1 around node 1B
-    - translate the entire unit vertically by z_shift
+    Set a moving unit to a trial rotation and translation
+    from its starting configuration.
     """
-    chain.reset()
 
-    unit_1 = chain.units[1]
-    pivot = unit_1.bottom_node
+    # Restore the configuration from the beginning of the solve.
+    chain._restore_coordinates(starting_coordinates)
 
-    unit_1.rotate(
+    moving_unit = chain.units[moving_unit_index]
+    pivot = moving_unit.bottom_node
+
+    moving_unit.rotate(
         pivot=pivot,
         degrees=theta_deg
     )
 
-    unit_1.translate(
+    moving_unit.translate(
         dy=0.0,
         dz=z_shift
     )
-
 
 def get_right_limit_gaps(chain):
     """
@@ -100,18 +99,11 @@ def get_reference_side(
     node_descriptor,
     segment_descriptor,
     orientation,
-    default_offset=10
 ):
     """
     Return +1 or -1 so that the gap is positive on the valid side
-    occupied in the default configuration.
+    occupied in the current reference configuration.
     """
-    set_two_unit_configuration(
-        chain,
-        theta_deg=0.0,
-        z_shift=0.0,
-        default_offset=default_offset
-    )
 
     node = chain.get_node_by_descriptor(node_descriptor)
     segment = chain.get_segment_by_descriptor(segment_descriptor)
@@ -126,16 +118,19 @@ def get_reference_side(
         raise ValueError(
             f"Cannot determine reference side for "
             f"{segment_descriptor} and {node_descriptor}: "
-            "the default gap is zero."
+            "the reference gap is zero."
         )
 
     return 1.0 if gap > 0 else -1.0
+
 
 # ============================================================================
 # Public API
 # ============================================================================
 def find_right_limiting_configuration_two_unit(
     chain,
+    lower_unit_index=0,
+    moving_unit_index=1,
     theta_guess=-38.6,
     z_guess=-1.8,
     theta_bounds=(-60.0, 0.0),
@@ -149,8 +144,8 @@ def find_right_limiting_configuration_two_unit(
     Find the maximum-right-rotation double-contact configuration.
 
     Target contacts:
-        segment 1R1B with node 0R
-        segment 1B1L with node 0T
+        segment moving_unit R-B with lower_unit R
+        segment moving_unit B-L with lower_unit T
 
     Parameters
     ----------
@@ -167,6 +162,31 @@ def find_right_limiting_configuration_two_unit(
     if contact_offset < 0:
         raise ValueError("contact_offset must be nonnegative.")
 
+    if not 0 <= lower_unit_index < len(chain.units):
+        raise IndexError(
+            f"Invalid lower unit index: {lower_unit_index}"
+        )
+
+    if not 0 <= moving_unit_index < len(chain.units):
+        raise IndexError(
+            f"Invalid moving unit index: {moving_unit_index}"
+        )
+
+    # Save the configuration at the beginning of the solve.
+    # Every trial configuration is evaluated relative to this state.
+    starting_coordinates = chain._save_coordinates()
+
+    node_R_descriptor = f"{lower_unit_index}R"
+    node_T_descriptor = f"{lower_unit_index}T"
+
+    segment_RB_descriptor = (
+        f"{moving_unit_index}R{moving_unit_index}B"
+    )
+
+    segment_BL_descriptor = (
+        f"{moving_unit_index}B{moving_unit_index}L"
+    )
+
     # Determine which side of each segment is valid in the
     # default, nonpenetrating configuration.
     right_side = get_reference_side(
@@ -174,7 +194,6 @@ def find_right_limiting_configuration_two_unit(
         node_descriptor="0R",
         segment_descriptor="1R1B",
         orientation="counterclockwise",
-        default_offset=default_offset
     )
 
     top_side = get_reference_side(
@@ -182,31 +201,41 @@ def find_right_limiting_configuration_two_unit(
         node_descriptor="0T",
         segment_descriptor="1B1L",
         orientation="clockwise",
-        default_offset=default_offset
     )
 
     def evaluate_target_gaps(theta_deg, z_shift):
-        set_two_unit_configuration(
+        set_adjacent_unit_configuration(
             chain=chain,
+            moving_unit_index=moving_unit_index,
+            starting_coordinates=starting_coordinates,
             theta_deg=theta_deg,
             z_shift=z_shift,
-            default_offset=default_offset
         )
 
-        segment_RB = chain.get_segment_by_descriptor("1R1B")
-        segment_BL = chain.get_segment_by_descriptor("1B1L")
+        segment_RB = chain.get_segment_by_descriptor(
+            segment_RB_descriptor
+        )
 
-        node_0R = chain.get_node_by_descriptor("0R")
-        node_0T = chain.get_node_by_descriptor("0T")
+        segment_BL = chain.get_segment_by_descriptor(
+            segment_BL_descriptor
+        )
+
+        node_R = chain.get_node_by_descriptor(
+            node_R_descriptor
+        )
+
+        node_T = chain.get_node_by_descriptor(
+            node_T_descriptor
+        )
 
         gap_right = get_node_segment_gap(
-            node_0R,
+            node_R,
             segment_RB,
             "counterclockwise"
         )
 
         gap_top = get_node_segment_gap(
-            node_0T,
+            node_T,
             segment_BL,
             "clockwise"
         )
@@ -282,32 +311,46 @@ def find_right_limiting_configuration_two_unit(
         print(f"θ: {theta_deg:.6f}°")
         print(f"z shift: {z_shift:.6f} mm")
         print(f"Contact offset: {contact_offset:.6f} mm")
-        print(f"Reference side 1R1B–0R: {right_side:+.0f}")
-        print(f"Reference side 1B1L–0T: {top_side:+.0f}")
+        print(
+            f"Reference side "
+            f"{segment_RB_descriptor}–{node_R_descriptor}: "
+            f"{right_side:+.0f}"
+        )
+        print(
+            f"Reference side "
+            f"{segment_BL_descriptor}–{node_T_descriptor}: "
+            f"{top_side:+.0f}"
+        )
 
         print(
-            f"Signed gap 1R1B–0R: "
+            f"Signed gap "
+            f"{segment_RB_descriptor}–{node_R_descriptor}: "
             f"{signed_gap_right:.9f} mm"
         )
         print(
-            f"Oriented separation 1R1B–0R: "
+            f"Oriented separation "
+            f"{segment_RB_descriptor}–{node_R_descriptor}: "
             f"{separation_right:.9f} mm"
         )
         print(
-            f"Clearance 1R1B–0R: "
+            f"Clearance "
+            f"{segment_RB_descriptor}–{node_R_descriptor}: "
             f"{clearance_right:.9f} mm"
         )
 
         print(
-            f"Signed gap 1B1L–0T: "
+            f"Signed gap "
+            f"{segment_BL_descriptor}–{node_T_descriptor}: "
             f"{signed_gap_top:.9f} mm"
         )
         print(
-            f"Oriented separation 1B1L–0T: "
+            f"Oriented separation "
+            f"{segment_BL_descriptor}–{node_T_descriptor}: "
             f"{separation_top:.9f} mm"
         )
         print(
-            f"Clearance 1B1L–0T: "
+            f"Clearance "
+            f"{segment_BL_descriptor}–{node_T_descriptor}: "
             f"{clearance_top:.9f} mm"
         )
 
@@ -316,6 +359,8 @@ def find_right_limiting_configuration_two_unit(
     return {
         "success": valid,
         "solver_success": solution.success,
+        "lower_unit_index": lower_unit_index,
+        "moving_unit_index": moving_unit_index,
         "theta_deg": theta_deg,
         "z_shift": z_shift,
         "contact_offset": contact_offset,
@@ -330,7 +375,6 @@ def find_right_limiting_configuration_two_unit(
         "residual_norm": residual_norm,
         "solution": solution
     }
-
 
 def find_left_limiting_configuration_two_unit(
     chain,
@@ -372,7 +416,7 @@ def find_left_limiting_configuration_two_unit(
     )
 
     def evaluate_target_gaps(theta_deg, z_shift):
-        set_two_unit_configuration(
+        set_adjacent_unit_configuration(
             chain=chain,
             theta_deg=theta_deg,
             z_shift=z_shift,
@@ -573,7 +617,7 @@ def find_vertical_limit(
     )
 
     def evaluate(z_shift):
-        set_two_unit_configuration(
+        set_adjacent_unit_configuration(
             chain=chain,
             theta_deg=0.0,
             z_shift=z_shift,
@@ -987,6 +1031,7 @@ def find_right_segment_segment_contact(
         "solution": solution
     }
 
+
 def find_limiting_configuration_two_unit(
     chain,
     direction,
@@ -1064,6 +1109,7 @@ def find_limiting_configuration_three_unit(
     chain,
     start_unit_index=0,
     direction="right",
+    contact_tolerance=1e-6,
     verbose=True
 ):
     """
@@ -1218,7 +1264,11 @@ def find_limiting_configuration_three_unit(
         unit_index=unit_1_index,
         pivot=pivot,
         degrees=theta_deg,
-        constraint_validator=configuration_is_valid, # why are all the rail gaps flipped?
+        constraint_validator=lambda chain: configuration_is_valid(
+            chain,
+            contact_tolerance=contact_tolerance,
+            verbose=False,
+        ),
         verbose=False
     )
 

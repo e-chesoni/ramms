@@ -48,7 +48,8 @@ from ramms.mobility import (
 
 from ramms.workspace import (
     find_limiting_configuration_three_unit,
-    find_limiting_configuration_two_unit
+    find_limiting_configuration_two_unit,
+    find_right_limiting_configuration_two_unit,
 )
 
 @log_call
@@ -236,6 +237,7 @@ def check_three_unit_mobility() -> None:
 def check_four_unit_mobility():
     four_unit_chain = make_four_unit_chain()
     PIVOT = four_unit_chain.units[1].bottom_node
+    CONTACT_TOLERANCE = 3.6
 
     plot_geometry(
         four_unit_chain,
@@ -248,27 +250,20 @@ def check_four_unit_mobility():
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
-    DEFAULT_ROTATION_DEG = 38.66 
 
     _ = find_limiting_configuration_three_unit(
         chain=four_unit_chain,
         start_unit_index=0,
         direction="right",
-    )
-
-    print(
-        "\nValid before rotating Unit 3:",
-        configuration_is_valid(four_unit_chain)
-    )
-
-    enforce_shared_rail_node_spacing(
-        four_unit_chain,
-        railed_unit_index=2,
+        contact_tolerance=CONTACT_TOLERANCE,
     )
 
     print(
         "\nValid before shared-rail correction:",
-        configuration_is_valid(four_unit_chain)
+        configuration_is_valid(
+            four_unit_chain,
+            contact_tolerance=CONTACT_TOLERANCE,
+        )
     )
 
     correction = enforce_shared_rail_node_spacing(
@@ -293,7 +288,10 @@ def check_four_unit_mobility():
 
     print(
         "\nValid after shared-rail correction:",
-        configuration_is_valid(four_unit_chain)
+        configuration_is_valid(
+            four_unit_chain,
+            contact_tolerance=CONTACT_TOLERANCE,
+        )
     )
 
     plot_geometry(
@@ -306,13 +304,28 @@ def check_four_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
-    """
-    propagate_free_unit_rotation(
-        four_unit_chain,
-        unit_index=3,
-        pivot=four_unit_chain.units[3].bottom_node,
-        degrees=-DEFAULT_ROTATION_DEG, # make negative to rotate to the right
-        constraint_validator=configuration_is_valid
+
+    result = find_right_limiting_configuration_two_unit(
+        chain=four_unit_chain,
+        lower_unit_index=2,
+        moving_unit_index=3,
+        contact_offset=four_unit_chain.node_strut_contact_offset,
+        contact_tolerance=3.6,
+        verbose=True,
+    )
+
+    print(
+        "\nUnit 2-3 limiting solution:"
+        f"\n  theta = {result['theta_deg']:.6f}°"
+        f"\n  z shift = {result['z_shift']:.6f} mm"
+    )
+
+    print(
+        "\nValid after Unit 3 limiting rotation:",
+        configuration_is_valid(
+            four_unit_chain,
+            contact_tolerance=3.6,
+        )
     )
 
     plot_geometry(
@@ -325,7 +338,69 @@ def check_four_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
-    """
+
+    candidate_gaps = get_candidate_gaps(
+        four_unit_chain
+    )
+    
+    active_gap_vector = get_active_gap_vector(
+        candidate_gaps,
+        contact_offset=(
+            four_unit_chain.node_strut_contact_offset
+        ),
+        contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
+        print_active_gap_vector=True
+    )
+
+    # Get point coordinates at the candidate configuration
+    point_positions = four_unit_chain.get_geometric_point_positions()
+
+    # Express active gaps in generalized coordinates
+    generalized_gap_vector, q = get_generalized_gap_vector(
+        four_unit_chain,
+        point_positions,
+        active_gap_vector
+    )
+
+    # Differentiate gaps to obtain the constraint Jacobian
+    generalized_jacobian = get_generalized_jacobian(
+        generalized_gap_vector,
+        q
+    )
+
+    # Verify active gaps are zero at the candidate state
+    evaluate_candidate_gaps(generalized_gap_vector, q)
+
+    print("\n")
+
+    # Compute SVD, rank, and nullity
+    analysis = analyze_generalized_jacobian(
+        generalized_jacobian,
+        q,
+    )
+
+    # Test admissible motion in each generalized-coordinate direction
+    analyze_remaining_motion(analysis, q)   
+
+    # ---------------------------------------------------------
+    # 4. Calculate Jacobian
+    # ---------------------------------------------------------
+
+    jacobian, coordinates = get_gap_jacobian(
+        active_gap_vector,
+        print_active_gap=True,
+        print_active_gap_details=False # if uncommented, the jacobian is so large, you cant really see the rest of the output (10,46)
+    )
+
+    # ---------------------------------------------------------
+    # 5. Plot final configuration
+    # ---------------------------------------------------------
+
+    print(
+        "\nClose the plot to exit out of this run."
+    )
+
+
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()

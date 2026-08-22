@@ -62,11 +62,22 @@ def configuration_is_valid(
     Penetration is not.
     """
 
-    candidate_gaps = get_candidate_gaps(chain, verbose)
+    candidate_gaps = get_candidate_gaps(
+        chain,
+        verbose=verbose,
+    )
 
     for gap in candidate_gaps:
 
         if gap.result.length_mm < -contact_tolerance:
+
+            if verbose:
+                print(
+                    "\nINVALID CONFIGURATION:"
+                    f"\n  gap: {gap.name}"
+                    f"\n  value: {gap.result.length_mm:.6f} mm"
+                )
+
             return False
 
     return True
