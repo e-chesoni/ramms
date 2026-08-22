@@ -139,9 +139,12 @@ def check_three_unit_mobility() -> None:
     CONTACT_TOLERANCE = 1e-6 # TODO: dont force 3.6; try new dz,dy solver
 
     # find right rotated motion limited candidate config
+
     _ = find_limiting_configuration_three_unit(
         chain=three_unit_chain,
         direction="right",
+        angle_step_deg=0.25,
+        contact_tolerance=CONTACT_TOLERANCE,
     )
     """
     # Find candidate / active gaps
@@ -211,7 +214,7 @@ def check_three_unit_mobility() -> None:
 def check_four_unit_mobility():
     four_unit_chain = make_four_unit_chain()
     PIVOT = four_unit_chain.units[1].bottom_node
-    CONTACT_TOLERANCE = 3.6
+    CONTACT_TOLERANCE = 1e-6
 
     plot_geometry(
         four_unit_chain,
@@ -233,7 +236,7 @@ def check_four_unit_mobility():
         verbose=True,
     )
 
-    anayze_motion_limiting_candidate(four_unit_chain)
+    anayze_motion_limiting_candidate(four_unit_chain, CONTACT_TOLERANCE)
 
     # Plot final configuration
     print(
@@ -255,7 +258,7 @@ def check_four_unit_mobility():
 def check_five_unit_mobility():
     chain = make_five_unit_chain()
     PIVOT = chain.units[1].bottom_node
-    CONTACT_TOLERANCE = 3.6
+    CONTACT_TOLERANCE = 1e-6
 
     plot_geometry(
         chain,
@@ -285,7 +288,7 @@ def check_five_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
-
+    
     segment_contact_result = find_right_segment_segment_contact(
         chain=chain,
         lower_unit_index=2,
@@ -308,6 +311,8 @@ def check_five_unit_mobility():
             f"{distance:.6f} mm"
         )
 
+    anayze_motion_limiting_candidate(chain, CONTACT_TOLERANCE)
+
     plot_geometry(
         chain,
         plot_title="After finding four unit subset motion limiting candidate",
@@ -318,6 +323,7 @@ def check_five_unit_mobility():
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
+    """
     
     # find candidate gaps and active gap vector
     candidate_gaps = get_candidate_gaps(
@@ -332,7 +338,6 @@ def check_five_unit_mobility():
         contact_tolerance=3.6, # 1e-6 # NOTE: we tweak this to accomidate imperfect geometry
         print_active_gap_vector=True
     )
-    """
     # Get point coordinates at the candidate configuration
     point_positions = chain.get_geometric_point_positions()
 
@@ -366,6 +371,6 @@ def check_five_unit_mobility():
 
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
-    check_three_unit_mobility()
+    #check_three_unit_mobility()
     #check_four_unit_mobility()
-    #check_five_unit_mobility()
+    check_five_unit_mobility()

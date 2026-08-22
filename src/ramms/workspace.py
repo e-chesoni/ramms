@@ -114,8 +114,8 @@ def find_right_segment_segment_contact(
     verbose=True
 ):
     """
-    Move the upper skip-level RAILED unit downward until the
-    selected segment pair reaches physical contact.
+    Move the upper skip-level RAILED unit downward toward the
+    selected segment-segment contact.
 
     Assumptions
     -----------
@@ -135,9 +135,36 @@ def find_right_segment_segment_contact(
 
         perpendicular centerline distance
             = chain.segment_segment_contact_offset
+
+    Motion limiting contacts
+    ------------------------
+    During the downward translation, the neighboring FREE unit may
+    contact the moving RAILED unit before the desired skip-level
+    segment-segment contact is reached.
+
+    For right rotation, specifically monitor:
+
+        moving Unit L node
+            against
+        intermediate FREE Unit L-T segment
+
+    and
+
+        moving Unit B node
+            against
+        intermediate FREE Unit R-B segment
+
+    If either contact becomes limiting first, stop at the last
+    nonpenetrating configuration and return that result.
     """
 
-    moving_unit_index = lower_unit_index + 2
+    moving_unit_index = (
+        lower_unit_index + 2
+    )
+
+    intermediate_unit_index = (
+        lower_unit_index + 1
+    )
 
     if moving_unit_index >= len(chain.units):
         raise ValueError(
@@ -146,7 +173,7 @@ def find_right_segment_segment_contact(
         )
 
     # ---------------------------------------------------------
-    # 1. Get the two target segments
+    # 1. Get the target skip-level segments
     # ---------------------------------------------------------
 
     fixed_segment = chain.get_segment_by_descriptor(
@@ -162,20 +189,66 @@ def find_right_segment_segment_contact(
     )
 
     # ---------------------------------------------------------
-    # 2. Save the current max-right configuration
+    # 2. Get the two node-segment pairs that may limit the
+    #    downward motion first.
     #
-    # Every trial translation will start from this exact state.
+    # Right-rotation case:
+    #
+    #     Unit 2L <-> Unit 1 L-T
+    #     Unit 2B <-> Unit 1 R-B
+    #
+    # Generalized here using the supplied lower_unit_index.
     # ---------------------------------------------------------
 
-    starting_coordinates = chain._save_coordinates()
+    moving_left_node = (
+        chain.get_node_by_descriptor(
+            f"{moving_unit_index}L"
+        )
+    )
+
+    moving_bottom_node = (
+        chain.get_node_by_descriptor(
+            f"{moving_unit_index}B"
+        )
+    )
+
+    intermediate_left_segment = (
+        chain.get_segment_by_descriptor(
+            f"{intermediate_unit_index}L"
+            f"{intermediate_unit_index}T"
+        )
+    )
+
+    intermediate_right_segment = (
+        chain.get_segment_by_descriptor(
+            f"{intermediate_unit_index}R"
+            f"{intermediate_unit_index}B"
+        )
+    )
+
+    node_strut_contact_offset = (
+        chain.node_strut_contact_offset
+    )
 
     # ---------------------------------------------------------
-    # 3. Confirm the segments are already parallel
+    # 3. Save the current max-right configuration
+    #
+    # Every trial translation starts from this exact state.
     # ---------------------------------------------------------
 
-    initial_result = get_segment_segment_distance(
-        fixed_segment,
-        moving_segment
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    # ---------------------------------------------------------
+    # 4. Confirm the target segments are already parallel
+    # ---------------------------------------------------------
+
+    initial_result = (
+        get_segment_segment_distance(
+            fixed_segment,
+            moving_segment
+        )
     )
 
     if not initial_result["parallel"]:
@@ -188,10 +261,10 @@ def find_right_segment_segment_contact(
         )
 
     # ---------------------------------------------------------
-    # 4. Evaluate segment clearance for a trial dz
+    # 5. Evaluate the geometry at a trial dz
     # ---------------------------------------------------------
 
-    def evaluate_clearance(dz):
+    def evaluate_configuration(dz):
 
         # Always start from the original max-right configuration.
         chain._restore_coordinates(
@@ -206,54 +279,108 @@ def find_right_segment_segment_contact(
             dz=dz
         )
 
-        fixed_segment = chain.get_segment_by_descriptor(
-            f"{lower_unit_index}T{lower_unit_index}R"
+        # -----------------------------------------------------
+        # A. Target skip-level segment-segment clearance
+        # -----------------------------------------------------
+
+        fixed_segment_current = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}T"
+                f"{lower_unit_index}R"
+            )
         )
 
-        moving_segment = chain.get_segment_by_descriptor(
-            f"{moving_unit_index}B{moving_unit_index}L"
+        moving_segment_current = (
+            chain.get_segment_by_descriptor(
+                f"{moving_unit_index}B"
+                f"{moving_unit_index}L"
+            )
         )
 
-        result = get_segment_segment_distance(
-            fixed_segment,
-            moving_segment
+        segment_result = (
+            get_segment_segment_distance(
+                fixed_segment_current,
+                moving_segment_current
+            )
         )
 
-        if not result["parallel"]:
+        if not segment_result["parallel"]:
             raise InvalidRAMMGeometryError(
                 "Segments unexpectedly became nonparallel "
                 "during vertical translation."
             )
 
-        perpendicular_distance = (
-            result["perpendicular_distance"]
-        )
-
-        clearance = (
-            perpendicular_distance
+        segment_clearance = (
+            segment_result["perpendicular_distance"]
             - contact_offset
         )
 
-        return clearance, result
+        # -----------------------------------------------------
+        # B. Moving L node against intermediate L-T segment
+        # -----------------------------------------------------
+
+        left_gap = get_node_segment_gap(
+            moving_left_node,
+            intermediate_left_segment,
+            "counterclockwise",
+        )
+
+        left_clearance = (
+            left_gap.result.length_mm
+            - node_strut_contact_offset
+        )
+
+        # -----------------------------------------------------
+        # C. Moving B node against intermediate R-B segment
+        # -----------------------------------------------------
+
+        bottom_gap = get_node_segment_gap(
+            moving_bottom_node,
+            intermediate_right_segment,
+            "clockwise",
+        )
+
+        bottom_clearance = (
+            bottom_gap.result.length_mm
+            - node_strut_contact_offset
+        )
+
+        return {
+            "segment_clearance": (
+                segment_clearance
+            ),
+            "segment_result": (
+                segment_result
+            ),
+            "left_clearance": (
+                left_clearance
+            ),
+            "bottom_clearance": (
+                bottom_clearance
+            ),
+        }
 
     # ---------------------------------------------------------
-    # 5. Residual for least-squares solver
+    # 6. Residual for desired segment-segment contact
     # ---------------------------------------------------------
 
     def residual(x):
 
-        dz = x[0]
-
-        clearance, _ = evaluate_clearance(
-            dz
+        result = evaluate_configuration(
+            x[0]
         )
 
         return np.array([
-            clearance
+            result[
+                "segment_clearance"
+            ]
         ])
 
     # ---------------------------------------------------------
-    # 6. Solve for vertical translation
+    # 7. Solve for the dz that WOULD produce the desired
+    #    skip-level segment-segment contact.
+    #
+    # We have not yet committed to moving that far.
     # ---------------------------------------------------------
 
     solution = least_squares(
@@ -271,103 +398,302 @@ def find_right_segment_segment_contact(
         gtol=1e-12
     )
 
-    dz = solution.x[0]
+    target_dz = float(
+        solution.x[0]
+    )
 
     # ---------------------------------------------------------
-    # 7. Check whether another constraint limits the motion first
+    # 8. Define validity of the downward translation itself
+    #
+    # The two nearby node-segment contacts are allowed to reach
+    # contact, but they may NOT penetrate.
+    #
+    # An optional external validator can still reject additional
+    # chain-wide penetrations.
     # ---------------------------------------------------------
 
-    motion_limit_result = None
+    def trial_configuration_is_valid():
 
-    if constraint_validator is not None:
-
-        def apply_trial_translation(trial_dz):
-            evaluate_clearance(trial_dz)
-
-        motion_limit_result = find_max_valid_translation(
-            target_translation=dz,
-            apply_translation=apply_trial_translation,
-            constraint_validator=lambda: constraint_validator(chain),
+        result = evaluate_configuration(
+            current_trial_dz[0]
         )
 
-        dz = motion_limit_result["translation"]
+        node_contacts_valid = (
+            result["left_clearance"]
+            >= -contact_tolerance
+            and result["bottom_clearance"]
+            >= -contact_tolerance
+        )
+
+        if not node_contacts_valid:
+            return False
+
+        if constraint_validator is not None:
+            return constraint_validator(
+                chain
+            )
+
+        return True
 
     # ---------------------------------------------------------
-    # 8. Leave the chain at the solved contact configuration
+    # 9. Search from dz = 0 toward the desired segment-contact
+    #    dz and stop at the first intervening constraint.
+    #
+    # find_max_valid_translation() expects:
+    #
+    #     apply_translation(dz)
+    #     constraint_validator()
+    #
+    # so keep track of which dz it most recently applied.
     # ---------------------------------------------------------
 
-    clearance, final_result = evaluate_clearance(
-        dz
+    current_trial_dz = [0.0]
+
+    def apply_trial_translation(
+        trial_dz
+    ):
+
+        current_trial_dz[0] = (
+            trial_dz
+        )
+
+        evaluate_configuration(
+            trial_dz
+        )
+
+    motion_limit_result = (
+        find_max_valid_translation(
+            target_translation=target_dz,
+            apply_translation=(
+                apply_trial_translation
+            ),
+            constraint_validator=(
+                trial_configuration_is_valid
+            ),
+        )
     )
+
+    dz = float(
+        motion_limit_result[
+            "translation"
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # 10. Leave chain at the final reachable configuration
+    # ---------------------------------------------------------
+
+    final_result = (
+        evaluate_configuration(
+            dz
+        )
+    )
+
+    segment_clearance = (
+        final_result[
+            "segment_clearance"
+        ]
+    )
+
+    left_clearance = (
+        final_result[
+            "left_clearance"
+        ]
+    )
+
+    bottom_clearance = (
+        final_result[
+            "bottom_clearance"
+        ]
+    )
+
+    segment_result = (
+        final_result[
+            "segment_result"
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # 11. Determine WHY we stopped
+    # ---------------------------------------------------------
 
     segment_contact_reached = (
         solution.success
-        and abs(clearance) <= contact_tolerance
-        and final_result["overlap"] is not None
-        and final_result["overlap"] >= -contact_tolerance
+        and abs(segment_clearance)
+        <= contact_tolerance
+        and segment_result["overlap"]
+        is not None
+        and segment_result["overlap"]
+        >= -contact_tolerance
+    )
+
+    left_contact_reached = (
+        abs(left_clearance)
+        <= contact_tolerance
+    )
+
+    bottom_contact_reached = (
+        abs(bottom_clearance)
+        <= contact_tolerance
     )
 
     constraint_limited = (
-        motion_limit_result is not None
-        and motion_limit_result["constraint_limited"]
+        motion_limit_result[
+            "constraint_limited"
+        ]
     )
 
-    valid = segment_contact_reached or constraint_limited
+    limiting_contacts = []
+
+    if left_contact_reached:
+        limiting_contacts.append(
+            f"{moving_unit_index}L-"
+            f"{intermediate_unit_index}L"
+            f"{intermediate_unit_index}T"
+        )
+
+    if bottom_contact_reached:
+        limiting_contacts.append(
+            f"{moving_unit_index}B-"
+            f"{intermediate_unit_index}R"
+            f"{intermediate_unit_index}B"
+        )
+
+    # Finding either the requested segment contact OR an earlier
+    # physical motion limit is a successful finder operation.
+    success = (
+        segment_contact_reached
+        or constraint_limited
+    )
 
     # ---------------------------------------------------------
-    # 8. Print result
+    # 12. Print result
     # ---------------------------------------------------------
 
     if verbose:
+
         print(
             f"Segment contact solver success: "
             f"{solution.success}"
         )
 
         print(
-            f"Physically valid contact: "
-            f"{valid}"
+            f"Desired segment-contact dz: "
+            f"{target_dz:.6f} mm"
         )
 
         print(
-            f"Vertical translation of Unit "
-            f"{moving_unit_index}: "
+            f"Actual reachable dz: "
             f"{dz:.6f} mm"
         )
 
         print(
-            f"Perpendicular distance: "
-            f"{final_result['perpendicular_distance']:.9f} mm"
+            f"Segment-segment clearance: "
+            f"{segment_clearance:.9f} mm"
         )
 
         print(
-            f"Contact offset: "
-            f"{contact_offset:.9f} mm"
+            f"{moving_unit_index}L-"
+            f"{intermediate_unit_index}L"
+            f"{intermediate_unit_index}T clearance: "
+            f"{left_clearance:.9f} mm"
         )
 
         print(
-            f"Clearance: "
-            f"{clearance:.9f} mm"
+            f"{moving_unit_index}B-"
+            f"{intermediate_unit_index}R"
+            f"{intermediate_unit_index}B clearance: "
+            f"{bottom_clearance:.9f} mm"
         )
+
+        if segment_contact_reached:
+
+            print(
+                "\nDesired skip-level "
+                "segment-segment contact reached."
+            )
+
+        elif constraint_limited:
+
+            print(
+                "\nDesired segment-segment contact "
+                "could not be reached by vertical "
+                "translation alone."
+            )
+
+            print(
+                "Stopped at the closest physically "
+                "valid configuration."
+            )
+
+            if limiting_contacts:
+                print(
+                    "Limiting contact(s): "
+                    + ", ".join(
+                        limiting_contacts
+                    )
+                )
 
         print(
             f"Projected overlap: "
-            f"{final_result['overlap']:.9f} mm"
+            f"{segment_result['overlap']:.9f} mm"
         )
 
+    # ---------------------------------------------------------
+    # 13. Return
+    # ---------------------------------------------------------
+
     return {
-        "success": valid,
-        "solver_success": solution.success,
-        "lower_unit_index": lower_unit_index,
-        "moving_unit_index": moving_unit_index,
-        "dz": dz,
-        "contact_offset": contact_offset,
-        "perpendicular_distance": (
-            final_result["perpendicular_distance"]
+        "success": success,
+        "solver_success": (
+            solution.success
         ),
-        "clearance": clearance,
-        "overlap": final_result["overlap"],
-        "solution": solution
+        "lower_unit_index": (
+            lower_unit_index
+        ),
+        "moving_unit_index": (
+            moving_unit_index
+        ),
+        "target_dz": (
+            target_dz
+        ),
+        "dz": (
+            dz
+        ),
+        "segment_contact_reached": (
+            segment_contact_reached
+        ),
+        "constraint_limited": (
+            constraint_limited
+        ),
+        "limiting_contacts": (
+            limiting_contacts
+        ),
+        "contact_offset": (
+            contact_offset
+        ),
+        "perpendicular_distance": (
+            segment_result[
+                "perpendicular_distance"
+            ]
+        ),
+        "clearance": (
+            segment_clearance
+        ),
+        "left_clearance": (
+            left_clearance
+        ),
+        "bottom_clearance": (
+            bottom_clearance
+        ),
+        "overlap": (
+            segment_result[
+                "overlap"
+            ]
+        ),
+        "solution": (
+            solution
+        ),
     }
 
 # ============================================================================
@@ -1112,7 +1438,769 @@ def find_limiting_configuration_two_unit(
     }
 
 
+def _try_limiting_configuration_three_unit(
+    chain,
+    start_unit_index=0,
+    direction="right",
+    theta_deg_override=None,
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    """
+    Attempt to construct a 3-unit limiting configuration for one
+    prescribed Unit-1 rotation angle.
+
+    This contains the original three-unit construction logic.
+
+    The normal 2-unit limiting configuration is still solved first
+    to obtain the reference z shift and maximum rotation.
+
+    If theta_deg_override is supplied, that rotation is used instead
+    of the full 2-unit limiting rotation.
+
+    The attempt is considered to have reached the desired 3-unit
+    configuration only when the skip-level segment-segment contact
+    is actually reached.
+
+    If an intervening node-segment contact limits the downward
+    translation first, that information is returned to the caller
+    so a smaller Unit-1 rotation can be attempted.
+    """
+
+    direction = direction.lower()
+
+    if verbose:
+        print(
+            f"direction: {direction}"
+        )
+
+    # Record the sequence of motions actually applied to the chain.
+    motions = []
+
+    # Indices of the three-unit subset.
+    unit_0_index = start_unit_index
+    unit_1_index = start_unit_index + 1
+    unit_2_index = start_unit_index + 2
+
+    if unit_2_index >= len(chain.units):
+        raise ValueError(
+            "The requested three-unit subset extends "
+            "beyond the end of the chain."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Determine the actual Unit 0 -> Unit 1 offset
+    # ---------------------------------------------------------
+
+    coords_0B = (
+        chain.units[
+            unit_0_index
+        ].bottom_node.coordinates
+    )
+
+    coords_1B = (
+        chain.units[
+            unit_1_index
+        ].bottom_node.coordinates
+    )
+
+    coords_2B = (
+        chain.units[
+            unit_2_index
+        ].bottom_node.coordinates
+    )
+
+    if verbose:
+        print(
+            "Initial bottom node coordinates for each unit:\n"
+            f"unit_{unit_0_index}: {coords_0B}\n"
+            f"unit_{unit_1_index}: {coords_1B}\n"
+            f"unit_{unit_2_index}: {coords_2B}\n"
+        )
+
+    # ---------------------------------------------------------
+    # 2. Contact offsets come directly from chain geometry
+    # ---------------------------------------------------------
+
+    node_strut_contact_offset = (
+        chain.node_strut_contact_offset
+    )
+
+    segment_segment_contact_offset = (
+        chain.segment_segment_contact_offset
+    )
+
+    if verbose:
+        print(
+            "Contact offsets:\n"
+            f"node-strut: "
+            f"{node_strut_contact_offset}\n"
+            f"segment-segment: "
+            f"{segment_segment_contact_offset}"
+        )
+
+    # ---------------------------------------------------------
+    # 3. Find the Unit 0-1 limiting configuration on a TEMPORARY
+    #    2-unit chain.
+    #
+    # Do not run find_left/right_max_rotation() directly on the
+    # 3-unit chain because that solver leaves its input chain in
+    # the solved configuration.
+    # ---------------------------------------------------------
+
+    lower_offset = (
+        coords_1B[0] - coords_0B[0],
+        coords_1B[1] - coords_0B[1],
+    )
+
+    two_unit_chain = RAMM_Chain.generate(
+        n_units=2,
+        start_position=coords_0B,
+        offsets=lower_offset,
+        node_diameter=chain.node_diameter,
+        strut_width=chain.strut_width,
+    )
+
+    if direction == "right":
+
+        result = (
+            find_right_limiting_configuration_two_unit(
+                two_unit_chain,
+                contact_offset=(
+                    node_strut_contact_offset
+                ),
+                verbose=False,
+            )
+        )
+
+    elif direction == "left":
+
+        result = (
+            find_left_limiting_configuration_two_unit(
+                two_unit_chain,
+                contact_offset=(
+                    node_strut_contact_offset
+                ),
+                verbose=False,
+            )
+        )
+
+    else:
+        raise ValueError(
+            "direction must be 'left' or 'right'."
+        )
+
+    if not result["success"]:
+        raise InvalidRAMMGeometryError(
+            f"Could not find the Unit "
+            f"{unit_0_index}-{unit_1_index} "
+            "limiting configuration."
+        )
+
+    # ---------------------------------------------------------
+    # 4. Use either:
+    #
+    #     - the full 2-unit limiting angle, or
+    #     - the angle requested by the outer stepper.
+    # ---------------------------------------------------------
+
+    max_theta_deg = (
+        result["theta_deg"]
+    )
+
+    if theta_deg_override is None:
+
+        theta_deg = (
+            max_theta_deg
+        )
+
+    else:
+
+        theta_deg = float(
+            theta_deg_override
+        )
+
+    # For this first implementation, retain the z shift obtained
+    # from the corresponding 2-unit limiting solve.
+    z_shift = (
+        result["z_shift"]
+    )
+
+    if verbose:
+        print(
+            "\nTwo-unit limiting solution:"
+        )
+
+        print(
+            f"  max theta = "
+            f"{max_theta_deg:.6f}°"
+        )
+
+        if theta_deg_override is not None:
+            print(
+                f"  trial theta = "
+                f"{theta_deg:.6f}°"
+            )
+
+        print(
+            f"  z shift = "
+            f"{z_shift:.6f} mm"
+        )
+
+    # ---------------------------------------------------------
+    # 5. Apply the vertical shift from the 2-unit solution
+    # ---------------------------------------------------------
+
+    chain.translate(
+        unit_index=unit_1_index,
+        dy=0.0,
+        dz=z_shift,
+        verbose=verbose,
+    )
+
+    motions.append({
+        "type": "translate",
+        "unit_index": unit_1_index,
+        "dy": 0.0,
+        "dz": z_shift,
+    })
+
+    # ---------------------------------------------------------
+    # 6. Apply the trial rotation WITH cascade
+    #
+    # Unit 1 rotates.
+    # Unit 2 moves in response to the upper rail constraint.
+    # ---------------------------------------------------------
+
+    pivot = (
+        chain.units[
+            unit_1_index
+        ].bottom_node
+    )
+
+    cascade_result = (
+        propagate_free_unit_rotation(
+            chain=chain,
+            unit_index=unit_1_index,
+            pivot=pivot,
+            degrees=theta_deg,
+            constraint_validator=lambda chain: (
+                configuration_is_valid(
+                    chain,
+                    contact_tolerance=(
+                        contact_tolerance
+                    ),
+                    verbose=False,
+                )
+            ),
+            verbose=False,
+        )
+    )
+
+    motions.append({
+        "type": "propagate_free_unit_rotation",
+        "unit_index": unit_1_index,
+        "degrees": (
+            cascade_result[
+                "actual_degrees"
+            ]
+        ),
+    })
+
+    if verbose:
+        print(
+            "\nApplied trial two-unit solution to "
+            "three-unit chain with cascade."
+        )
+
+        print(
+            f"  requested rotation = "
+            f"{theta_deg:.6f} deg"
+        )
+
+        print(
+            f"  actual rotation = "
+            f"{cascade_result['actual_degrees']:.6f} deg"
+        )
+
+    # ---------------------------------------------------------
+    # 7. Attempt to move Unit 2 downward toward the desired
+    #    skip-level segment-segment contact.
+    #
+    # The updated finder will stop early if either relevant
+    # node-segment contact becomes limiting first.
+    # ---------------------------------------------------------
+
+    if direction != "right":
+        raise NotImplementedError(
+            "Angle stepping is currently implemented "
+            "for right rotation only."
+        )
+
+    segment_contact_result = (
+        find_right_segment_segment_contact(
+            chain=chain,
+            lower_unit_index=(
+                unit_0_index
+            ),
+            contact_tolerance=(
+                contact_tolerance
+            ),
+            verbose=verbose,
+        )
+    )
+
+    motions.append({
+        "type": "translate_from",
+        "start_unit_index": (
+            unit_2_index
+        ),
+        "dy": 0.0,
+        "dz": (
+            segment_contact_result[
+                "dz"
+            ]
+        ),
+    })
+
+    # ---------------------------------------------------------
+    # 8. Did this particular angle actually allow the desired
+    #    skip-level segment-segment contact?
+    #
+    # IMPORTANT:
+    # Do not use segment_contact_result["success"] here.
+    #
+    # That is also True when the translation successfully found
+    # an earlier physical constraint.
+    # ---------------------------------------------------------
+
+    segment_contact_reached = (
+        segment_contact_result[
+            "segment_contact_reached"
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # 9. Return this trial
+    # ---------------------------------------------------------
+
+    return {
+        "success": (
+            segment_contact_reached
+        ),
+        "direction": direction,
+        "start_unit_index": (
+            start_unit_index
+        ),
+        "trial_theta_deg": (
+            theta_deg
+        ),
+        "max_theta_deg": (
+            max_theta_deg
+        ),
+        "z_shift": (
+            z_shift
+        ),
+        "motions": motions,
+        "two_unit_solution": (
+            result
+        ),
+        "cascade_result": (
+            cascade_result
+        ),
+        "segment_contact_result": (
+            segment_contact_result
+        ),
+    }
+
 def find_limiting_configuration_three_unit(
+    chain,
+    start_unit_index=0,
+    direction="right",
+    angle_step_deg=0.25,
+    min_angle_deg=0.0,
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    """
+    Find a 3-unit limiting configuration by progressively reducing
+    the Unit-1 rotation from the corresponding 2-unit maximum.
+
+    Workflow
+    --------
+    1. Determine the full 2-unit limiting rotation.
+    2. Try that angle on the 3-unit chain.
+    3. Attempt to move Unit 2 downward toward the desired
+       skip-level segment-segment contact.
+    4. If an intervening node-segment contact limits that motion
+       first, restore the original 3-unit configuration.
+    5. Reduce the Unit-1 rotation by angle_step_deg.
+    6. Repeat until the desired skip-level segment-segment contact
+       becomes reachable.
+    7. Leave the chain at the successful configuration.
+
+    Notes
+    -----
+    Every trial begins from exactly the same starting coordinates.
+
+    For right rotation, the 2-unit limiting angle is negative.
+    The search therefore reduces its magnitude toward zero.
+    """
+
+    direction = (
+        direction.lower()
+    )
+
+    if direction != "right":
+        raise NotImplementedError(
+            "Three-unit angle stepping is currently "
+            "implemented for right rotation only."
+        )
+
+    if angle_step_deg <= 0.0:
+        raise ValueError(
+            "angle_step_deg must be positive."
+        )
+
+    if min_angle_deg < 0.0:
+        raise ValueError(
+            "min_angle_deg must be nonnegative."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Save the untouched 3-unit starting configuration
+    #
+    # EVERY trial will return here first.
+    # ---------------------------------------------------------
+
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    # ---------------------------------------------------------
+    # 2. First determine the normal maximum 2-unit angle.
+    #
+    # We can use the internal trial routine once, but we do not
+    # want to keep the geometry it produces yet.
+    # ---------------------------------------------------------
+
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    initial_trial = (
+        _try_limiting_configuration_three_unit(
+            chain=chain,
+            start_unit_index=(
+                start_unit_index
+            ),
+            direction=direction,
+            theta_deg_override=None,
+            contact_tolerance=(
+                contact_tolerance
+            ),
+            verbose=False,
+        )
+    )
+
+    max_theta_deg = float(
+        initial_trial[
+            "max_theta_deg"
+        ]
+    )
+
+    # Restore because the initial trial moved the actual chain.
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    # Right rotation currently gives a negative angle.
+    angle_sign = (
+        -1.0
+        if max_theta_deg < 0.0
+        else 1.0
+    )
+
+    max_angle_magnitude = abs(
+        max_theta_deg
+    )
+
+    # ---------------------------------------------------------
+    # 3. Search from maximum rotation toward zero
+    # ---------------------------------------------------------
+
+    trial_index = 0
+    trial_angle_magnitude = (
+        max_angle_magnitude
+    )
+
+    best_result = None
+    best_clearance = math.inf
+    best_coordinates = None
+
+    while (
+        trial_angle_magnitude
+        >= min_angle_deg
+        - 1e-12
+    ):
+
+        trial_theta_deg = (
+            angle_sign
+            * trial_angle_magnitude
+        )
+
+        # Every trial starts from exactly the same chain state.
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+        if verbose:
+            print(
+                "\n"
+                "========================================"
+            )
+
+            print(
+                f"Three-unit angle trial "
+                f"{trial_index}"
+            )
+
+            print(
+                f"  trial theta: "
+                f"{trial_theta_deg:.6f}°"
+            )
+
+            print(
+                "========================================"
+            )
+
+        trial_result = (
+            _try_limiting_configuration_three_unit(
+                chain=chain,
+                start_unit_index=(
+                    start_unit_index
+                ),
+                direction=direction,
+                theta_deg_override=(
+                    trial_theta_deg
+                ),
+                contact_tolerance=(
+                    contact_tolerance
+                ),
+                verbose=verbose,
+            )
+        )
+
+        segment_result = (
+            trial_result[
+                "segment_contact_result"
+            ]
+        )
+
+        segment_clearance = abs(
+            segment_result[
+                "clearance"
+            ]
+        )
+
+        # -----------------------------------------------------
+        # Keep track of the closest attempt in case no exact
+        # solution is found within the stepped range.
+        # -----------------------------------------------------
+
+        if (
+            segment_clearance
+            < best_clearance
+        ):
+
+            best_clearance = (
+                segment_clearance
+            )
+
+            best_result = (
+                trial_result
+            )
+
+            best_coordinates = (
+                chain._save_coordinates()
+            )
+
+        # -----------------------------------------------------
+        # SUCCESS:
+        # desired skip-level segment contact was actually reached
+        # before an intervening contact blocked the translation.
+        # -----------------------------------------------------
+
+        if (
+            segment_result[
+                "segment_contact_reached"
+            ]
+        ):
+
+            if verbose:
+                print(
+                    "\nFound three-unit limiting "
+                    "configuration."
+                )
+
+                print(
+                    f"  successful theta: "
+                    f"{trial_theta_deg:.6f}°"
+                )
+
+                print(
+                    f"  segment clearance: "
+                    f"{segment_result['clearance']:.9f} mm"
+                )
+
+            return {
+                "success": True,
+                "direction": direction,
+                "start_unit_index": (
+                    start_unit_index
+                ),
+                "max_theta_deg": (
+                    max_theta_deg
+                ),
+                "successful_theta_deg": (
+                    trial_theta_deg
+                ),
+                "angle_step_deg": (
+                    angle_step_deg
+                ),
+                "n_trials": (
+                    trial_index + 1
+                ),
+                "trial_result": (
+                    trial_result
+                ),
+                "two_unit_solution": (
+                    trial_result[
+                        "two_unit_solution"
+                    ]
+                ),
+                "cascade_result": (
+                    trial_result[
+                        "cascade_result"
+                    ]
+                ),
+                "segment_contact_result": (
+                    segment_result
+                ),
+                "motions": (
+                    trial_result[
+                        "motions"
+                    ]
+                ),
+            }
+
+        # -----------------------------------------------------
+        # This angle was blocked before segment contact.
+        #
+        # Report WHY, then try a slightly smaller rotation.
+        # -----------------------------------------------------
+
+        if verbose:
+            print(
+                "\nDesired skip-level contact "
+                "was not reachable at this angle."
+            )
+
+            if (
+                segment_result[
+                    "limiting_contacts"
+                ]
+            ):
+                print(
+                    "  limiting contact(s): "
+                    + ", ".join(
+                        segment_result[
+                            "limiting_contacts"
+                        ]
+                    )
+                )
+
+            print(
+                f"  remaining segment clearance: "
+                f"{segment_result['clearance']:.6f} mm"
+            )
+
+            print(
+                f"  trying "
+                f"{angle_step_deg:.6f}° "
+                "less rotation..."
+            )
+
+        trial_index += 1
+
+        trial_angle_magnitude -= (
+            angle_step_deg
+        )
+
+    # ---------------------------------------------------------
+    # 4. No stepped angle reached the desired contact
+    #
+    # Leave the chain at the closest configuration found rather
+    # than at an arbitrary final failed trial.
+    # ---------------------------------------------------------
+
+    if best_coordinates is not None:
+
+        chain._restore_coordinates(
+            best_coordinates
+        )
+
+    else:
+
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+    if verbose:
+        print(
+            "\nCould not reach the desired "
+            "skip-level segment-segment contact "
+            "within the tested angle range."
+        )
+
+        if best_result is not None:
+            print(
+                f"Closest tested angle: "
+                f"{best_result['trial_theta_deg']:.6f}°"
+            )
+
+            print(
+                f"Closest segment clearance: "
+                f"{best_clearance:.9f} mm"
+            )
+
+    return {
+        "success": False,
+        "direction": direction,
+        "start_unit_index": (
+            start_unit_index
+        ),
+        "max_theta_deg": (
+            max_theta_deg
+        ),
+        "successful_theta_deg": None,
+        "angle_step_deg": (
+            angle_step_deg
+        ),
+        "n_trials": (
+            trial_index
+        ),
+        "best_result": (
+            best_result
+        ),
+        "best_clearance": (
+            best_clearance
+            if best_result is not None
+            else None
+        ),
+    }
+
+def find_limiting_configuration_three_unit_old(
     chain,
     start_unit_index=0,
     direction="right",
