@@ -373,7 +373,7 @@ def enforce_shared_rail_node_spacing(
     return float(dy), float(dz)
 
 
-def _apply_cascading_rotation(
+def _apply_propagating_rotation(
     chain,
     unit_index,
     pivot,
@@ -432,6 +432,260 @@ def _apply_cascading_rotation(
             if has_railed_unit_above
             else None
         )
+    }
+
+
+def set_adjacent_unit_configuration(
+    chain,
+    moving_unit_index,
+    starting_coordinates,
+    theta_deg,
+    z_shift,
+):
+    """
+    Set a moving FREE unit to a trial rotation and translation
+    from its starting configuration.
+
+    If a RAILED unit exists immediately above the moving FREE
+    unit, preserve the FREE top node's position along that rail.
+    """
+
+    # Restore the configuration from the beginning of the solve.
+    chain._restore_coordinates(starting_coordinates)
+
+    moving_unit = chain.units[moving_unit_index]
+
+    railed_unit_index = moving_unit_index + 1
+
+    has_railed_unit_above = (
+        railed_unit_index < len(chain.units)
+        and chain.units[railed_unit_index].unit_type
+        == UnitType.RAILED
+    )
+
+    # Save where the FREE top node currently lies along the
+    # RAILED unit above it before applying the trial motion.
+    fractional_position = None
+
+    if has_railed_unit_above:
+        fractional_position = (
+            _get_free_node_position_along_rail(
+                chain,
+                free_unit_index=moving_unit_index,
+                railed_unit_index=railed_unit_index,
+            )
+        )
+
+    pivot = moving_unit.bottom_node
+
+    moving_unit.rotate(
+        pivot=pivot,
+        degrees=theta_deg
+    )
+
+    moving_unit.translate(
+        dy=0.0,
+        dz=z_shift
+    )
+
+    # Move the RAILED unit and everything above it so the FREE
+    # top node remains at the same position along its rails.
+    if has_railed_unit_above:
+        _reposition_railed_unit_from_free_top(
+            chain,
+            free_unit_index=moving_unit_index,
+            railed_unit_index=railed_unit_index,
+            fractional_position=fractional_position,
+        )
+
+
+def get_free_bottom_to_preceding_rail_top_distance(
+    chain,
+    free_unit_index,
+):
+    """
+    Return the signed distance along the preceding RAILED unit's
+    centerline from its top node to the FREE unit's bottom node.
+
+    Positive:
+        FREE bottom lies beyond the RAILED top in the local
+        bottom-to-top rail direction.
+
+    Zero:
+        Nodes coincide along the rail direction.
+
+    Negative:
+        FREE bottom lies below the RAILED top along the local
+        rail direction.
+    """
+
+    if free_unit_index <= 0:
+        raise ValueError(
+            "FREE unit must have a preceding unit."
+        )
+
+    free_unit = chain.units[free_unit_index]
+    railed_unit = chain.units[free_unit_index - 1]
+
+    if free_unit.unit_type != UnitType.FREE:
+        raise ValueError(
+            f"Unit {free_unit_index} must be FREE."
+        )
+
+    if railed_unit.unit_type != UnitType.RAILED:
+        raise ValueError(
+            f"Unit {free_unit_index - 1} must be RAILED."
+        )
+
+    rail_bottom = np.asarray(
+        railed_unit.bottom_node.coordinates,
+        dtype=float,
+    )
+
+    rail_top = np.asarray(
+        railed_unit.top_node.coordinates,
+        dtype=float,
+    )
+
+    free_bottom = np.asarray(
+        free_unit.bottom_node.coordinates,
+        dtype=float,
+    )
+
+    rail_vector = rail_top - rail_bottom
+    rail_length = np.linalg.norm(rail_vector)
+
+    if rail_length <= 1e-12:
+        raise InvalidRAMMGeometryError(
+            f"RAILED Unit {free_unit_index - 1} "
+            "has zero-length centerline."
+        )
+
+    rail_direction = rail_vector / rail_length
+
+    return float(
+        np.dot(
+            free_bottom - rail_top,
+            rail_direction,
+        )
+    )
+
+
+def get_free_bottom_rail_top_distances(chain):
+    """
+    Return local rail-direction distances for every FREE unit.
+    """
+
+    distances = {}
+
+    for unit_index, unit in enumerate(chain.units):
+
+        if unit.unit_type != UnitType.FREE:
+            continue
+
+        distances[unit_index] = (
+            get_free_bottom_to_preceding_rail_top_distance(
+                chain,
+                free_unit_index=unit_index,
+            )
+        )
+
+    return distances
+
+
+def find_max_valid_translation(
+    target_translation,
+    apply_translation,
+    constraint_validator,
+    translation_tolerance=1e-6,
+    n_initial_steps=100,
+):
+    """
+    Find the furthest valid translation toward a target translation.
+
+    Parameters
+    ----------
+    target_translation:
+        Desired scalar translation.
+
+    apply_translation:
+        Callable that places the chain at a specified trial
+        translation from the saved starting configuration.
+
+    constraint_validator:
+        Callable that returns True if the resulting chain
+        configuration is physically valid.
+
+    translation_tolerance:
+        Resolution used to refine the limiting translation.
+
+    n_initial_steps:
+        Number of coarse steps used to locate the first
+        invalid configuration.
+
+    Returns
+    -------
+    dict
+        Whether the target was reached and, if not, the last
+        valid translation before another constraint intervened.
+    """
+
+    last_valid_translation = 0.0
+    first_invalid_translation = None
+
+    trial_translations = np.linspace(
+        0.0,
+        target_translation,
+        n_initial_steps,
+    )
+
+    # Find the first invalid point along the requested motion.
+    for trial_translation in trial_translations[1:]:
+
+        apply_translation(trial_translation)
+
+        if constraint_validator():
+            last_valid_translation = trial_translation
+        else:
+            first_invalid_translation = trial_translation
+            break
+
+    # The entire requested translation is valid.
+    if first_invalid_translation is None:
+        apply_translation(target_translation)
+
+        return {
+            "target_reached": True,
+            "translation": target_translation,
+            "constraint_limited": False,
+        }
+
+    # Refine the transition from valid to invalid.
+    valid_translation = last_valid_translation
+    invalid_translation = first_invalid_translation
+
+    while (
+        abs(invalid_translation - valid_translation)
+        > translation_tolerance
+    ):
+        trial_translation = (
+            valid_translation + invalid_translation
+        ) / 2.0
+
+        apply_translation(trial_translation)
+
+        if constraint_validator():
+            valid_translation = trial_translation
+        else:
+            invalid_translation = trial_translation
+
+    # Leave the chain at the last valid configuration.
+    apply_translation(valid_translation)
+
+    return {
+        "target_reached": False,
+        "translation": valid_translation,
+        "constraint_limited": True,
     }
 
 
@@ -526,7 +780,7 @@ def propagate_free_unit_rotation(
     # ---------------------------------------------------------
 
     try:
-        full_result = _apply_cascading_rotation(
+        full_result = _apply_propagating_rotation(
             chain,
             unit_index=unit_index,
             pivot=pivot,
@@ -621,7 +875,7 @@ def propagate_free_unit_rotation(
         )
 
         try:
-            _apply_cascading_rotation(
+            _apply_propagating_rotation(
                 chain,
                 unit_index=unit_index,
                 pivot=pivot,
@@ -654,7 +908,7 @@ def propagate_free_unit_rotation(
         starting_coordinates
     )
 
-    final_result = _apply_cascading_rotation(
+    final_result = _apply_propagating_rotation(
         chain,
         unit_index=unit_index,
         pivot=pivot,

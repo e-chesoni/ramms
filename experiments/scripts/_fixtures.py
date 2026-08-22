@@ -14,10 +14,11 @@ FOUR_UNIT_YLIM = (-5, 65)
 FIVE_UNIT_YLIM = (-5, 80)
 XLIM = (-15, 15)
 XLIM_WIDE = (-25, 25)
-TWO_UNIT_ROTATED_RIGHT_XLIM=(-15, 25) # TODO: will need to reverse this for left rotation
+TWO_UNIT_ROTATED_RIGHT_XLIM=(-15, 25)
 TWO_UNIT_ROTATED_LEFT_XLIM = (-25, 15)
-THREE_UNIT_ROTATED_RIGHT_XLIM=(-15, 25) # TODO: will need to reverse this for left rotation
+THREE_UNIT_ROTATED_RIGHT_XLIM=(-15, 25)
 THREE_UNIT_ROTATED_LEFT_XLIM = (-25, 15)
+FIVE_UNIT_ROTATED_RIGHT_XLIM=(-15, 35) # TODO: will need to reverse this for left rotation
 TWO_UNIT_YLIM = (-5, 30)
 ROTATED_THREE_UNIT_YLIM=(-5, 45)
 

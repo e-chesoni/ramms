@@ -9,6 +9,7 @@ import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+
 plt.style.use("seaborn-v0_8-whitegrid")
 import plotly.graph_objects as go
 import copy
@@ -25,6 +26,7 @@ from dataclasses import dataclass
 from scipy.optimize import root
 from scipy.optimize import least_squares
 
+from .exceptions import InvalidRAMMGeometryError
 from .core import UnitType
 from .contact import get_node_segment_gap, get_segment_segment_gap
 
@@ -428,13 +430,35 @@ def get_candidate_gaps(chain, verbose=True):
         )
         if verbose:
             print(f"Skip level upper unit segments: {upper_unit_segment_BL}, {upper_unit_segment_TR}, {upper_unit_segment_RB}, {upper_unit_segment_LT}")
-
+        
+    try:
         skip_level_gap_right = get_segment_segment_gap(
             lower_unit_segment_TR,
             upper_unit_segment_BL,
             contact_offset=chain.segment_segment_contact_offset,
-            verbose=True
+            verbose=verbose
         )
+
+        if verbose:
+            print(
+                "Skip level gap with right rotation: "
+                f"{skip_level_gap_right.length_mm}"
+            )
+
+        gaps.append(
+            skip_level_gap_right
+        )
+
+    except InvalidRAMMGeometryError:
+        # The finite segments do not currently overlap, so this
+        # skip-level segment pair cannot form a contact yet.
+        if verbose:
+            print(
+                f"Skipping {lower_unit_segment_TR} and "
+                f"{upper_unit_segment_BL}: "
+                "finite segments do not currently overlap."
+            )
+
         """
         skip_level_gap_left = get_segment_segment_gap(
             lower_unit_segment_LT,
@@ -443,14 +467,6 @@ def get_candidate_gaps(chain, verbose=True):
             verbose=True
         )        
         """
-        if verbose:
-            print(f"Skip level gap with right rotation: {skip_level_gap_right.length_mm}")
-            #print(f"Skip level gap with right rotation: {skip_level_gap_left.length_mm}")
-
-        gaps.extend([
-            # TODO: write method to get segment-segment gaps
-            skip_level_gap_right
-        ])
 
     # =========================================================
     # Evaluate FREE-RAILED neighboring pairs:

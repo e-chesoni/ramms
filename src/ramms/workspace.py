@@ -27,9 +27,14 @@ from scipy.optimize import least_squares
 
 from .contact import get_node_segment_gap, get_segment_segment_distance
 from .exceptions import InvalidRAMMGeometryError
-from .core import RAMM_Chain
+from .core import (
+    UnitType,
+    RAMM_Chain,
+)
 from .kinematics import (
     _translate_units_from,
+    find_max_valid_translation,
+    set_adjacent_unit_configuration,
     enforce_shared_rail_node_spacing,
     propagate_free_unit_rotation,
 )
@@ -39,34 +44,6 @@ from .mobility import configuration_is_valid
 # ============================================================================
 # Helpers
 # ============================================================================
-def set_adjacent_unit_configuration(
-    chain,
-    moving_unit_index,
-    starting_coordinates,
-    theta_deg,
-    z_shift,
-):
-    """
-    Set a moving unit to a trial rotation and translation
-    from its starting configuration.
-    """
-
-    # Restore the configuration from the beginning of the solve.
-    chain._restore_coordinates(starting_coordinates)
-
-    moving_unit = chain.units[moving_unit_index]
-    pivot = moving_unit.bottom_node
-
-    moving_unit.rotate(
-        pivot=pivot,
-        degrees=theta_deg
-    )
-
-    moving_unit.translate(
-        dy=0.0,
-        dz=z_shift
-    )
-
 def get_right_limit_gaps(chain):
     """
     Maximum-right-rotation contacts from the old notebook:
@@ -124,9 +101,277 @@ def get_reference_side(
 
     return 1.0 if gap > 0 else -1.0
 
+# ============================================================================
+# Contact Finders
+# ============================================================================
+def find_right_segment_segment_contact(
+    chain,
+    lower_unit_index,
+    dz_guess=-8.0,
+    dz_bounds=(-30.0, 0.0),
+    contact_tolerance=1e-6,
+    constraint_validator=None,
+    verbose=True
+):
+    """
+    Move the upper skip-level RAILED unit downward until the
+    selected segment pair reaches physical contact.
+
+    Assumptions
+    -----------
+    The chain is already in the max-right configuration for
+    the relevant lower subset.
+
+    Target contact
+    --------------
+        Lower RAILED unit segment:  T -> R
+        Upper RAILED unit segment:  B -> L
+
+    The segments must already be parallel. This method only
+    translates the upper skip-level unit vertically; it does not
+    rotate it.
+
+    Physical segment contact occurs when:
+
+        perpendicular centerline distance
+            = chain.segment_segment_contact_offset
+    """
+
+    moving_unit_index = lower_unit_index + 2
+
+    if moving_unit_index >= len(chain.units):
+        raise ValueError(
+            "No skip-level unit exists above "
+            f"Unit {lower_unit_index}."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Get the two target segments
+    # ---------------------------------------------------------
+
+    fixed_segment = chain.get_segment_by_descriptor(
+        f"{lower_unit_index}T{lower_unit_index}R"
+    )
+
+    moving_segment = chain.get_segment_by_descriptor(
+        f"{moving_unit_index}B{moving_unit_index}L"
+    )
+
+    contact_offset = (
+        chain.segment_segment_contact_offset
+    )
+
+    # ---------------------------------------------------------
+    # 2. Save the current max-right configuration
+    #
+    # Every trial translation will start from this exact state.
+    # ---------------------------------------------------------
+
+    starting_coordinates = chain._save_coordinates()
+
+    # ---------------------------------------------------------
+    # 3. Confirm the segments are already parallel
+    # ---------------------------------------------------------
+
+    initial_result = get_segment_segment_distance(
+        fixed_segment,
+        moving_segment
+    )
+
+    if not initial_result["parallel"]:
+        raise InvalidRAMMGeometryError(
+            f"Segments "
+            f"{lower_unit_index}T{lower_unit_index}R and "
+            f"{moving_unit_index}B{moving_unit_index}L "
+            "are not parallel. Vertical translation alone "
+            "cannot create the requested contact."
+        )
+
+    # ---------------------------------------------------------
+    # 4. Evaluate segment clearance for a trial dz
+    # ---------------------------------------------------------
+
+    def evaluate_clearance(dz):
+
+        # Always start from the original max-right configuration.
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+        # Move the upper skip-level unit and everything above it.
+        _translate_units_from(
+            chain,
+            start_unit_index=moving_unit_index,
+            dy=0.0,
+            dz=dz
+        )
+
+        fixed_segment = chain.get_segment_by_descriptor(
+            f"{lower_unit_index}T{lower_unit_index}R"
+        )
+
+        moving_segment = chain.get_segment_by_descriptor(
+            f"{moving_unit_index}B{moving_unit_index}L"
+        )
+
+        result = get_segment_segment_distance(
+            fixed_segment,
+            moving_segment
+        )
+
+        if not result["parallel"]:
+            raise InvalidRAMMGeometryError(
+                "Segments unexpectedly became nonparallel "
+                "during vertical translation."
+            )
+
+        perpendicular_distance = (
+            result["perpendicular_distance"]
+        )
+
+        clearance = (
+            perpendicular_distance
+            - contact_offset
+        )
+
+        return clearance, result
+
+    # ---------------------------------------------------------
+    # 5. Residual for least-squares solver
+    # ---------------------------------------------------------
+
+    def residual(x):
+
+        dz = x[0]
+
+        clearance, _ = evaluate_clearance(
+            dz
+        )
+
+        return np.array([
+            clearance
+        ])
+
+    # ---------------------------------------------------------
+    # 6. Solve for vertical translation
+    # ---------------------------------------------------------
+
+    solution = least_squares(
+        residual,
+        x0=np.array(
+            [dz_guess],
+            dtype=float
+        ),
+        bounds=(
+            [dz_bounds[0]],
+            [dz_bounds[1]]
+        ),
+        xtol=1e-12,
+        ftol=1e-12,
+        gtol=1e-12
+    )
+
+    dz = solution.x[0]
+
+    # ---------------------------------------------------------
+    # 7. Check whether another constraint limits the motion first
+    # ---------------------------------------------------------
+
+    motion_limit_result = None
+
+    if constraint_validator is not None:
+
+        def apply_trial_translation(trial_dz):
+            evaluate_clearance(trial_dz)
+
+        motion_limit_result = find_max_valid_translation(
+            target_translation=dz,
+            apply_translation=apply_trial_translation,
+            constraint_validator=lambda: constraint_validator(chain),
+        )
+
+        dz = motion_limit_result["translation"]
+
+    # ---------------------------------------------------------
+    # 8. Leave the chain at the solved contact configuration
+    # ---------------------------------------------------------
+
+    clearance, final_result = evaluate_clearance(
+        dz
+    )
+
+    segment_contact_reached = (
+        solution.success
+        and abs(clearance) <= contact_tolerance
+        and final_result["overlap"] is not None
+        and final_result["overlap"] >= -contact_tolerance
+    )
+
+    constraint_limited = (
+        motion_limit_result is not None
+        and motion_limit_result["constraint_limited"]
+    )
+
+    valid = segment_contact_reached or constraint_limited
+
+    # ---------------------------------------------------------
+    # 8. Print result
+    # ---------------------------------------------------------
+
+    if verbose:
+        print(
+            f"Segment contact solver success: "
+            f"{solution.success}"
+        )
+
+        print(
+            f"Physically valid contact: "
+            f"{valid}"
+        )
+
+        print(
+            f"Vertical translation of Unit "
+            f"{moving_unit_index}: "
+            f"{dz:.6f} mm"
+        )
+
+        print(
+            f"Perpendicular distance: "
+            f"{final_result['perpendicular_distance']:.9f} mm"
+        )
+
+        print(
+            f"Contact offset: "
+            f"{contact_offset:.9f} mm"
+        )
+
+        print(
+            f"Clearance: "
+            f"{clearance:.9f} mm"
+        )
+
+        print(
+            f"Projected overlap: "
+            f"{final_result['overlap']:.9f} mm"
+        )
+
+    return {
+        "success": valid,
+        "solver_success": solution.success,
+        "lower_unit_index": lower_unit_index,
+        "moving_unit_index": moving_unit_index,
+        "dz": dz,
+        "contact_offset": contact_offset,
+        "perpendicular_distance": (
+            final_result["perpendicular_distance"]
+        ),
+        "clearance": clearance,
+        "overlap": final_result["overlap"],
+        "solution": solution
+    }
 
 # ============================================================================
-# Public API
+# Motion Limiting Finders
 # ============================================================================
 def find_right_limiting_configuration_two_unit(
     chain,
@@ -794,246 +1039,6 @@ def find_vertical_limit(
     }
 
 
-def find_right_segment_segment_contact(
-    chain,
-    lower_unit_index,
-    dz_guess=-8.0,
-    dz_bounds=(-30.0, 0.0),
-    contact_tolerance=1e-6,
-    verbose=True
-):
-    """
-    Move the upper skip-level RAILED unit downward until the
-    selected segment pair reaches physical contact.
-
-    Assumptions
-    -----------
-    The chain is already in the max-right configuration for
-    the relevant lower subset.
-
-    Target contact
-    --------------
-        Lower RAILED unit segment:  T -> R
-        Upper RAILED unit segment:  B -> L
-
-    The segments must already be parallel. This method only
-    translates the upper skip-level unit vertically; it does not
-    rotate it.
-
-    Physical segment contact occurs when:
-
-        perpendicular centerline distance
-            = chain.segment_segment_contact_offset
-    """
-
-    moving_unit_index = lower_unit_index + 2
-
-    if moving_unit_index >= len(chain.units):
-        raise ValueError(
-            "No skip-level unit exists above "
-            f"Unit {lower_unit_index}."
-        )
-
-    # ---------------------------------------------------------
-    # 1. Get the two target segments
-    # ---------------------------------------------------------
-
-    fixed_segment = chain.get_segment_by_descriptor(
-        f"{lower_unit_index}T{lower_unit_index}R"
-    )
-
-    moving_segment = chain.get_segment_by_descriptor(
-        f"{moving_unit_index}B{moving_unit_index}L"
-    )
-
-    contact_offset = (
-        chain.segment_segment_contact_offset
-    )
-
-    # ---------------------------------------------------------
-    # 2. Save the current max-right configuration
-    #
-    # Every trial translation will start from this exact state.
-    # ---------------------------------------------------------
-
-    starting_coordinates = chain._save_coordinates()
-
-    # ---------------------------------------------------------
-    # 3. Confirm the segments are already parallel
-    # ---------------------------------------------------------
-
-    initial_result = get_segment_segment_distance(
-        fixed_segment,
-        moving_segment
-    )
-
-    if not initial_result["parallel"]:
-        raise InvalidRAMMGeometryError(
-            f"Segments "
-            f"{lower_unit_index}T{lower_unit_index}R and "
-            f"{moving_unit_index}B{moving_unit_index}L "
-            "are not parallel. Vertical translation alone "
-            "cannot create the requested contact."
-        )
-
-    # ---------------------------------------------------------
-    # 4. Evaluate segment clearance for a trial dz
-    # ---------------------------------------------------------
-
-    def evaluate_clearance(dz):
-
-        # Always start from the original max-right configuration.
-        chain._restore_coordinates(
-            starting_coordinates
-        )
-
-        # Move the upper skip-level unit and everything above it.
-        _translate_units_from(
-            chain,
-            start_unit_index=moving_unit_index,
-            dy=0.0,
-            dz=dz
-        )
-
-        fixed_segment = chain.get_segment_by_descriptor(
-            f"{lower_unit_index}T{lower_unit_index}R"
-        )
-
-        moving_segment = chain.get_segment_by_descriptor(
-            f"{moving_unit_index}B{moving_unit_index}L"
-        )
-
-        result = get_segment_segment_distance(
-            fixed_segment,
-            moving_segment
-        )
-
-        if not result["parallel"]:
-            raise InvalidRAMMGeometryError(
-                "Segments unexpectedly became nonparallel "
-                "during vertical translation."
-            )
-
-        perpendicular_distance = (
-            result["perpendicular_distance"]
-        )
-
-        clearance = (
-            perpendicular_distance
-            - contact_offset
-        )
-
-        return clearance, result
-
-    # ---------------------------------------------------------
-    # 5. Residual for least-squares solver
-    # ---------------------------------------------------------
-
-    def residual(x):
-
-        dz = x[0]
-
-        clearance, _ = evaluate_clearance(
-            dz
-        )
-
-        return np.array([
-            clearance
-        ])
-
-    # ---------------------------------------------------------
-    # 6. Solve for vertical translation
-    # ---------------------------------------------------------
-
-    solution = least_squares(
-        residual,
-        x0=np.array(
-            [dz_guess],
-            dtype=float
-        ),
-        bounds=(
-            [dz_bounds[0]],
-            [dz_bounds[1]]
-        ),
-        xtol=1e-12,
-        ftol=1e-12,
-        gtol=1e-12
-    )
-
-    dz = solution.x[0]
-
-    # ---------------------------------------------------------
-    # 7. Leave the chain at the solved contact configuration
-    # ---------------------------------------------------------
-
-    clearance, final_result = evaluate_clearance(
-        dz
-    )
-
-    valid = (
-        solution.success
-        and abs(clearance) <= contact_tolerance
-        and final_result["overlap"] is not None
-        and final_result["overlap"] >= -contact_tolerance
-    )
-
-    # ---------------------------------------------------------
-    # 8. Print result
-    # ---------------------------------------------------------
-
-    if verbose:
-        print(
-            f"Segment contact solver success: "
-            f"{solution.success}"
-        )
-
-        print(
-            f"Physically valid contact: "
-            f"{valid}"
-        )
-
-        print(
-            f"Vertical translation of Unit "
-            f"{moving_unit_index}: "
-            f"{dz:.6f} mm"
-        )
-
-        print(
-            f"Perpendicular distance: "
-            f"{final_result['perpendicular_distance']:.9f} mm"
-        )
-
-        print(
-            f"Contact offset: "
-            f"{contact_offset:.9f} mm"
-        )
-
-        print(
-            f"Clearance: "
-            f"{clearance:.9f} mm"
-        )
-
-        print(
-            f"Projected overlap: "
-            f"{final_result['overlap']:.9f} mm"
-        )
-
-    return {
-        "success": valid,
-        "solver_success": solution.success,
-        "lower_unit_index": lower_unit_index,
-        "moving_unit_index": moving_unit_index,
-        "dz": dz,
-        "contact_offset": contact_offset,
-        "perpendicular_distance": (
-            final_result["perpendicular_distance"]
-        ),
-        "clearance": clearance,
-        "overlap": final_result["overlap"],
-        "solution": solution
-    }
-
-
 def find_limiting_configuration_two_unit(
     chain,
     direction,
@@ -1324,7 +1329,7 @@ def find_limiting_configuration_three_unit(
         "segment_contact_result": segment_contact_result,
     }
 
-
+"""
 def find_limiting_configuration_four_unit(
     chain,
     start_index=0,
@@ -1332,16 +1337,6 @@ def find_limiting_configuration_four_unit(
     contact_tolerance=1e-6,
     verbose=True,
 ):
-    """
-    Build a four-unit rotational motion-limiting candidate
-    from the corresponding three-unit candidate.
-    """
-
-    if len(chain.units) != 4:
-        raise ValueError(
-            "find_four_unit_jamming_candidate() "
-            "requires a four-unit chain."
-        )
 
     if direction != "right":
         raise NotImplementedError(
@@ -1425,4 +1420,129 @@ def find_limiting_configuration_four_unit(
         "success": True, # TODO: placeholder for now; should be updating this
         "direction": direction,
         "three_unit_solution": three_unit_result,
+    }
+"""
+
+def find_limiting_configuration_four_unit(
+    chain,
+    start_unit_index=0,
+    direction="right",
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    """
+    Build a four-unit rotational motion-limiting candidate
+    from the corresponding three-unit candidate.
+    """
+
+    direction = direction.lower()
+
+    # Indices of the four-unit subset.
+    subset_unit_0_idx = start_unit_index
+    subset_unit_1_idx = start_unit_index + 1
+    subset_unit_2_idx = start_unit_index + 2
+    subset_unit_3_idx = start_unit_index + 3
+
+    if subset_unit_3_idx >= len(chain.units):
+        raise ValueError(
+            "The requested four-unit subset extends "
+            "beyond the end of the chain."
+        )
+
+    if direction != "right":
+        raise NotImplementedError(
+            "Only right rotation is currently implemented."
+        )
+
+    three_unit_result = find_limiting_configuration_three_unit(
+        chain=chain,
+        start_unit_index=start_unit_index,
+        direction=direction,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+
+    if verbose:
+        print(
+            "\nValid before shared-rail correction:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
+
+    correction = enforce_shared_rail_node_spacing(
+        chain,
+        railed_unit_index=subset_unit_2_idx,
+    )
+
+    if verbose:
+        print(
+            "\nShared-rail correction:",
+            correction
+        )
+
+        # unit 1 top node coordinates
+        print(
+            f"\n{subset_unit_1_idx}T:",
+            chain.units[
+                subset_unit_1_idx
+            ].top_node.coordinates
+        )
+
+        # unit 3 bottom node coordinates
+        print(
+            f"{subset_unit_3_idx}B:",
+            chain.units[
+                subset_unit_3_idx
+            ].bottom_node.coordinates
+        )
+
+        print(
+            "\nValid after shared-rail correction:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
+
+    last_two_unit_subset_result = (
+        find_right_limiting_configuration_two_unit(
+            chain=chain,
+            lower_unit_index=subset_unit_2_idx,
+            moving_unit_index=subset_unit_3_idx,
+            contact_offset=chain.node_strut_contact_offset,
+            contact_tolerance=contact_tolerance,
+            verbose=verbose,
+        )
+    )
+
+    if verbose:
+        print(
+            f"\nUnit {subset_unit_2_idx}-"
+            f"{subset_unit_3_idx} limiting solution:"
+            f"\n  theta = "
+            f"{last_two_unit_subset_result['theta_deg']:.6f}°"
+            f"\n  z shift = "
+            f"{last_two_unit_subset_result['z_shift']:.6f} mm"
+        )
+
+        print(
+            f"\nValid after Unit "
+            f"{subset_unit_3_idx} limiting rotation:",
+            configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+            )
+        )
+
+    return {
+        "success": True, # TODO: placeholder for now; should be updating this
+        "direction": direction,
+        "start_unit_index": start_unit_index,
+        "three_unit_solution": three_unit_result,
+        "last_two_unit_subset_solution": (
+            last_two_unit_subset_result
+        ),
+        "shared_rail_correction": correction,
     }

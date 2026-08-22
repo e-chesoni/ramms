@@ -50,7 +50,6 @@ def _classify_gap_change(value, tol=1e-9):
         return "MAINTAINED"
 
 
-@log_call
 def configuration_is_valid(
     chain,
     contact_tolerance=1e-6,
@@ -313,6 +312,7 @@ def analyze_remaining_motion(analysis, q, tol=1e-9, verbose=True):
                 )
 
     return results
+
 
 def anayze_motion_limiting_candidate(chain):
     # find candidate gaps and active gap vector
