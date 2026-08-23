@@ -2652,317 +2652,6 @@ def find_limiting_configuration_three_unit(
         ),
     }
 
-def find_limiting_configuration_three_unit_old(
-    chain,
-    start_unit_index=0,
-    direction="right",
-    contact_tolerance=1e-6,
-    verbose=True
-):
-    """
-    Construct the first-stage candidate jamming configuration
-    for a 3-unit subset of a chain.
-
-    Workflow
-    --------
-    1. get max angle for units 1 and 2 (its 38.66 with no offset)
-    2. Solve the corresponding 2-unit max-rotation configuration.
-    3. Extract the solved angle and z shift.
-    4. Apply that motion to Unit 1 of the 3-unit chain using
-       cascading motion.
-    5. Verify the selected Unit 0 / Unit 2 segments are parallel.
-    6. Translate Unit 2 vertically until those segments contact.
-    """
-
-    direction = direction.lower()
-    print(f"direction: {direction}")
-
-    # Record the sequence of motions actually applied to the chain.
-    motions = []
-
-    # Indices of the three-unit subset.
-    unit_0_index = start_unit_index
-    unit_1_index = start_unit_index + 1
-    unit_2_index = start_unit_index + 2
-
-    if unit_2_index >= len(chain.units):
-        raise ValueError(
-            "The requested three-unit subset extends "
-            "beyond the end of the chain."
-        )
-
-    # ---------------------------------------------------------
-    # 1. Determine the actual Unit 0 -> Unit 1 offset
-    # ---------------------------------------------------------
-
-    coords_0B = chain.units[unit_0_index].bottom_node.coordinates
-    coords_1B = chain.units[unit_1_index].bottom_node.coordinates
-    coords_2B = chain.units[unit_2_index].bottom_node.coordinates
-
-    if verbose:
-        print("Initial bottom node coordinates for each unit:\n"
-            f"unit_{unit_0_index}: {coords_0B}\n"
-            f"unit_{unit_1_index}: {coords_1B}\n"
-            f"unit_{unit_2_index}: {coords_2B}\n"
-        )
-
-    # ---------------------------------------------------------
-    # 5. Apply the solved rotation WITH cascade
-    #
-    # Unit 1 rotates.
-    # Unit 2 moves in response to the upper rail constraint.
-    # ---------------------------------------------------------
-    # TODO: rotation angle should depend on node_diameter
-    # Contact offsets come directly from the chain geometry.
-    node_strut_contact_offset = (
-        chain.node_strut_contact_offset
-    )
-
-    segment_segment_contact_offset = (
-        chain.segment_segment_contact_offset
-    )
-
-    if verbose:
-        print(
-            "Contact offsets:\n"
-            f"node-strut: {node_strut_contact_offset}\n"
-            f"segment-segment: {segment_segment_contact_offset}"
-        )
-    
-    # TODO: run find max rotation to get theta_deg
-    # ---------------------------------------------------------
-    # Find the Unit 0-1 limiting configuration on a TEMPORARY
-    # 2-unit chain.
-    #
-    # Do not run find_left/right_max_rotation() directly on the
-    # 3-unit chain because that solver leaves its input chain in
-    # the solved configuration.
-    # ---------------------------------------------------------
-
-    lower_offset = (
-        coords_1B[0] - coords_0B[0],
-        coords_1B[1] - coords_0B[1]
-    )
-
-    two_unit_chain = RAMM_Chain.generate(
-        n_units=2,
-        start_position=coords_0B,
-        offsets=lower_offset,
-        node_diameter=chain.node_diameter,
-        strut_width=chain.strut_width
-    )
-
-    if direction == "right":
-        result = find_right_limiting_configuration_two_unit(
-            two_unit_chain,
-            contact_offset=node_strut_contact_offset,
-            verbose=False
-        )
-
-    elif direction == "left":
-        result = find_left_limiting_configuration_two_unit(
-            two_unit_chain,
-            contact_offset=node_strut_contact_offset,
-            verbose=False
-        )
-
-    else:
-        raise ValueError(
-            "direction must be 'left' or 'right'."
-        )
-
-    if not result["success"]:
-        raise InvalidRAMMGeometryError(
-            f"Could not find the Unit "
-            f"{unit_0_index}-{unit_1_index} "
-            "limiting configuration."
-        )
-
-    theta_deg = result["theta_deg"]
-    z_shift = result["z_shift"]
-
-    if verbose:
-        print("\nTwo-unit limiting solution:")
-        print(f"  theta = {theta_deg:.6f}°")
-        print(f"  z shift = {z_shift:.6f} mm")
-
-    # ---------------------------------------------------------
-    # Apply the vertical shift from the 2-unit solution.
-    # ---------------------------------------------------------
-
-    chain.translate(
-        unit_index=unit_1_index,
-        dy=0.0,
-        dz=z_shift,
-        verbose=verbose
-    )
-
-    motions.append({
-        "type": "translate",
-        "unit_index": unit_1_index,
-        "dy": 0.0,
-        "dz": z_shift,
-    })
-
-    pivot = chain.units[unit_1_index].bottom_node
-
-    cascade_result = propagate_free_unit_rotation(
-        chain=chain,
-        unit_index=unit_1_index,
-        pivot=pivot,
-        degrees=theta_deg,
-        constraint_validator=lambda chain: configuration_is_valid(
-            chain,
-            contact_tolerance=contact_tolerance,
-            verbose=False,
-        ),
-        verbose=False
-    )
-
-    motions.append({
-        "type": "propagate_free_unit_rotation",
-        "unit_index": unit_1_index,
-        "degrees": cascade_result["actual_degrees"],
-    })
-
-    if verbose:
-        print(
-            "\nApplied two-unit solution to "
-            "three-unit chain with cascade."
-        )
-        print(
-            f"  requested rotation = "
-            f"{theta_deg:.6f} deg"
-        )
-        print(
-            f"  actual rotation = "
-            f"{cascade_result['actual_degrees']:.6f} deg"
-        )
-
-    # TODO: move unit 2 down until segments 0T0R and 2B2L are in contact
-    segment_contact_result = (
-        find_right_segment_segment_contact(
-            chain=chain,
-            lower_unit_index=unit_0_index,
-            verbose=verbose
-        )
-    )
-
-    motions.append({
-        "type": "translate_from",
-        "start_unit_index": unit_2_index,
-        "dy": 0.0,
-        "dz": segment_contact_result["dz"],
-    })
-
-    # ---------------------------------------------------------
-    # 8. Return the solved information
-    # ---------------------------------------------------------
-
-    return {
-        "success": True, # TODO: placeholder for now; should be updating this
-        "direction": direction,
-        "start_unit_index": start_unit_index,
-        "motions": motions,
-        "two_unit_solution": result,
-        "cascade_result": cascade_result,
-        "segment_contact_result": segment_contact_result,
-    }
-
-"""
-def find_limiting_configuration_four_unit(
-    chain,
-    start_index=0,
-    direction="right",
-    contact_tolerance=1e-6,
-    verbose=True,
-):
-
-    if direction != "right":
-        raise NotImplementedError(
-            "Only right rotation is currently implemented."
-        )
-
-    three_unit_result = find_limiting_configuration_three_unit(
-        chain=chain,
-        start_unit_index=start_index,
-        direction="right",
-        contact_tolerance=contact_tolerance,
-    )
-
-    if verbose:
-        print(
-            "\nValid before shared-rail correction:",
-            configuration_is_valid(
-                chain,
-                contact_tolerance=contact_tolerance,
-            )
-        )
-
-    correction = enforce_shared_rail_node_spacing(
-        chain,
-        railed_unit_index=start_index+2,
-    )
-    # The "first unit" is unit 0; Python is zero indexed
-    subset_unit_1_idx = start_index + 1
-    subset_unit_2_idx = start_index + 2
-    subset_unit_3_idx = start_index + 3
-
-    if verbose:
-        print(
-            "\nShared-rail correction:",
-            correction
-        )
-        # unit 1 top node coordinates
-        print(
-            f"\n{subset_unit_1_idx}T:",
-            chain.units[subset_unit_1_idx].top_node.coordinates
-        )
-        # unit 3 bottom node coordinates
-        print(
-            f"{subset_unit_3_idx}B:",
-            chain.units[subset_unit_3_idx].bottom_node.coordinates
-        )
-
-        print(
-            "\nValid after shared-rail correction:",
-            configuration_is_valid(
-                chain,
-                contact_tolerance=contact_tolerance,
-            )
-        )
-
-    last_two_unit_subset_result = find_right_limiting_configuration_two_unit(
-        chain=chain,
-        lower_unit_index=subset_unit_2_idx,
-        moving_unit_index=subset_unit_3_idx,
-        contact_offset=chain.node_strut_contact_offset,
-        contact_tolerance=contact_tolerance,
-        verbose=True,
-    )
-
-    if verbose:
-        print(
-            "\nUnit 2-3 limiting solution:"
-            f"\n  theta = {last_two_unit_subset_result['theta_deg']:.6f}°"
-            f"\n  z shift = {last_two_unit_subset_result['z_shift']:.6f} mm"
-        )
-
-        print(
-            "\nValid after Unit 3 limiting rotation:",
-            configuration_is_valid(
-                chain,
-                contact_tolerance=contact_tolerance,
-            )
-        )
-
-    return {
-        "success": True, # TODO: placeholder for now; should be updating this
-        "direction": direction,
-        "three_unit_solution": three_unit_result,
-    }
-"""
-
 def find_limiting_configuration_four_unit(
     chain,
     start_unit_index=0,
@@ -3086,3 +2775,85 @@ def find_limiting_configuration_four_unit(
         ),
         "shared_rail_correction": correction,
     }
+
+def find_limiting_configuration_five_unit(
+    chain,
+    start_unit_index=0,
+    direction="right",
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    """
+    Build a five-unit rotational motion-limiting candidate
+    from the corresponding four-unit candidate.
+    """
+
+    direction = direction.lower()
+
+    # Indices of the four-unit subset.
+    subset_unit_2_idx = start_unit_index + 2
+
+    if direction != "right":
+        raise NotImplementedError(
+            "Only right rotation is currently implemented."
+        )
+
+    four_unit_result = find_limiting_configuration_four_unit(
+        chain=chain,
+        start_unit_index=start_unit_index,
+        direction=direction,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+
+    _ = find_right_segment_segment_contact(
+            chain=chain,
+            lower_unit_index=subset_unit_2_idx,
+            contact_tolerance=contact_tolerance,
+            constraint_validator=lambda chain: configuration_is_valid(
+                chain,
+                contact_tolerance=contact_tolerance,
+                verbose=False,
+            ),
+            verbose=True,
+        )
+    
+    return {
+        "success": True, # TODO: placeholder for now; should be updating this
+        "direction": direction,
+        "start_unit_index": start_unit_index,
+        "four_unit_solution": four_unit_result,
+    }
+
+def find_limiting_configuration_six_unit(
+    chain,
+    start_index=0,
+    direction="right",
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    _ = find_limiting_configuration_five_unit(
+        chain,
+        direction=direction,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+    
+    subset_unit_4_idx = start_index + 4
+    subset_unit_5_idx = start_index + 5
+    
+    correction = enforce_shared_rail_node_spacing(
+        chain,
+        railed_unit_index=subset_unit_4_idx,
+    )
+
+    last_two_unit_subset_result = (
+        find_right_limiting_configuration_two_unit(
+            chain=chain,
+            lower_unit_index=subset_unit_4_idx,
+            moving_unit_index=subset_unit_5_idx,
+            contact_offset=chain.node_strut_contact_offset,
+            contact_tolerance=contact_tolerance,
+            verbose=verbose,
+        )
+    )
