@@ -2825,6 +2825,7 @@ def find_limiting_configuration_five_unit(
         "four_unit_solution": four_unit_result,
     }
 
+
 def find_limiting_configuration_six_unit(
     chain,
     start_index=0,
@@ -2857,3 +2858,71 @@ def find_limiting_configuration_six_unit(
             verbose=verbose,
         )
     )
+
+
+def find_limiting_configuration_even_n_unit_helper():
+    pass
+
+def find_limiting_configuration_odd_n_unit_helper():
+    pass
+
+def find_limiting_configuration_n_unit(
+    chain:RAMM_Chain,
+    start_index=0,
+    direction="right",
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    chain_length = len(chain.units)
+    if chain_length < 4:
+        print("Chain is too short for n_unit solver. Use specific length solvers for chains shorther than 4 units."
+              f"\n Chain length: {chain_length}")
+
+    direction = direction.lower()
+
+    # get 3 unit solution
+    three_unit_result = find_limiting_configuration_three_unit(
+        chain=chain,
+        start_unit_index=start_index,
+        direction=direction,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+    # SIX UNIT CHAIN WALKTHROUGH
+    for unit_idx in range(chain_length - 3): # runs twice
+        sovling_chain_length = 3 + 1 + unit_idx # TODO: obviously 4; clean this up later
+        if (sovling_chain_length % 2) == 0:
+            print(f"solving chain length {sovling_chain_length}")
+            subset_railed_unit_index = sovling_chain_length - 2
+            subset_free_moving_unit_idx = subset_railed_unit_index + 1
+            correction = enforce_shared_rail_node_spacing(
+                chain,
+                railed_unit_index=subset_railed_unit_index, # 2 for four unit solver, 4 for six unit solver...etc TODO: check!
+            )
+
+            last_two_unit_subset_result = (
+                find_right_limiting_configuration_two_unit(
+                    chain=chain,
+                    lower_unit_index=subset_railed_unit_index,
+                    moving_unit_index=subset_free_moving_unit_idx,
+                    contact_offset=chain.node_strut_contact_offset,
+                    contact_tolerance=contact_tolerance,
+                    verbose=verbose,
+                )
+            )
+        else:
+            lower_unit_idx = unit_idx + 1 # 2
+            # usually run 4 unit solver here for 5 units; but should have that already if we're here
+
+            _ = find_right_segment_segment_contact(
+                    chain=chain,
+                    lower_unit_index=lower_unit_idx, # for a five unit chain, this is 2
+                    contact_tolerance=contact_tolerance,
+                    constraint_validator=lambda chain: configuration_is_valid(
+                        chain,
+                        contact_tolerance=contact_tolerance,
+                        verbose=False,
+                    ),
+                    verbose=True,
+                )
+    return

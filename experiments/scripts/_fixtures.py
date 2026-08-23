@@ -30,6 +30,34 @@ ROTATED_FOUR_UNIT_YLIM=(-5, 45)
 ROTATED_FIVE_UNIT_YLIM=(-5, 55)
 ROTATED_SIX_UNIT_YLIM=(-5, 65)
 
+def get_ylim(n_units: int):
+    """Generate y-axis limits for an unrotated n-unit chain."""
+    y_max = 15 * n_units + 5
+
+    if n_units == 2:
+        y_max = 30
+
+    return (-5, y_max)
+
+def get_rotated_xlim(n_units: int, direction: str = "right"):
+    """Generate x-axis limits for a rotated n-unit chain."""
+    x_max = max(25, 10 * n_units - 15)
+
+    if direction == "right":
+        return (-15, x_max)
+    elif direction == "left":
+        return (-x_max, 15)
+    else:
+        raise ValueError("direction must be 'right' or 'left'")
+
+
+# TODO: will need this for left too one day...
+def get_rotated_ylim(n_units: int, direction: str ="right"):
+    """Generate y-axis limits for a rotated n-unit chain."""
+    y_max = 10 * n_units + 5
+
+    return (-5, y_max)
+
 def make_two_unit_chain(node_diameter: float = 2.0) -> RAMM_Chain:
     total_units = 2
     starting_pos_0B = (0,0)
@@ -113,10 +141,13 @@ def make_five_unit_chain(node_diameter: float = 2.0, offsets=((0, 12), (0, 13), 
 
 def make_chain(
     n_units: int,
-    offsets,
+    offsets=None,
     node_diameter: float = 2.0,
     start_position=(0, 0),
 ) -> RAMM_Chain:
+
+    if offsets is None:
+        offsets = ((0, 12),) + ((0, 13),) * (n_units - 2)
     """
     Create an n-unit RAMM chain from prescribed bottom-node offsets.
 
@@ -167,3 +198,4 @@ def make_chain(
         offsets=offsets,
         node_diameter=node_diameter,
     )
+

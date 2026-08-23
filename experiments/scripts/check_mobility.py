@@ -6,6 +6,9 @@ from IPython.display import display
 
 from ramms.logger import log_call
 from _fixtures import (
+    get_rotated_xlim,
+    get_rotated_ylim,
+    get_ylim,
     make_two_unit_chain,
     make_three_unit_chain,
     make_four_unit_chain,
@@ -58,6 +61,7 @@ from ramms.mobility import (
 
 from ramms.workspace import (
     find_limiting_configuration_five_unit,
+    find_limiting_configuration_n_unit,
     find_limiting_configuration_six_unit,
     find_limiting_configuration_two_unit,
     find_right_limiting_configuration_two_unit,
@@ -302,9 +306,57 @@ def check_six_unit_mobility():
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
+@log_call
+def check_n_unit_mobility(n_units, direction):
+    chain = make_chain(n_units=n_units)
+    PIVOT = chain.units[1].bottom_node
+    
+    y_lim = get_ylim(n_units)
+    rotated_x_lim = get_rotated_xlim(n_units, direction)
+    rotated_y_lim = get_rotated_ylim(n_units, direction)
+    
+    plot_geometry(
+        chain,
+        plot_title="Before Cascading Rotation",
+        xlim=XLIM,
+        ylim=y_lim,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
+    # find right rotated motion limited candidate config
+    _ = find_limiting_configuration_n_unit(
+        chain,
+        start_index=0,
+        direction=direction,
+        contact_tolerance=CONTACT_TOLERANCE,
+        verbose=True,
+    )
+
+    anayze_motion_limiting_candidate(chain, CONTACT_TOLERANCE)
+
+    # Plot final configuration
+    print(
+        "\nClose the plot to exit."
+    )
+
+    plot_geometry(
+        chain,
+        plot_title="After Second Cascading Rotation About Unit 2's Bottom Node",
+        xlim=rotated_x_lim,
+        ylim=rotated_y_lim,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
     #check_four_unit_mobility()
     #check_five_unit_mobility()
-    check_six_unit_mobility()
+    #check_six_unit_mobility()
+    check_n_unit_mobility(7, "right")
