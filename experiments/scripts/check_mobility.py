@@ -136,7 +136,7 @@ def check_three_unit_mobility() -> None:
 
     # generate chain
     three_unit_chain = make_three_unit_chain()
-    CONTACT_TOLERANCE = 1e-6 # TODO: dont force 3.6; try new dz,dy solver
+    CONTACT_TOLERANCE = 0.085 # TODO: dont force 3.6; try new dz,dy solver
 
     # find right rotated motion limited candidate config
 
@@ -214,7 +214,7 @@ def check_three_unit_mobility() -> None:
 def check_four_unit_mobility():
     four_unit_chain = make_four_unit_chain()
     PIVOT = four_unit_chain.units[1].bottom_node
-    CONTACT_TOLERANCE = 1e-6
+    CONTACT_TOLERANCE = 0.085
 
     plot_geometry(
         four_unit_chain,
@@ -275,7 +275,7 @@ def check_five_unit_mobility():
         chain=chain,
         start_unit_index=0,
         direction="right",
-        contact_tolerance=3.6,
+        contact_tolerance=CONTACT_TOLERANCE,
     )
 
     plot_geometry(
@@ -372,5 +372,5 @@ def check_five_unit_mobility():
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
-    #check_four_unit_mobility()
-    check_five_unit_mobility()
+    check_four_unit_mobility()
+    #check_five_unit_mobility()

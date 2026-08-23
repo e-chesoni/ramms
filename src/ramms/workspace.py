@@ -1437,7 +1437,430 @@ def find_limiting_configuration_two_unit(
         "solver_result": result,
     }
 
+def find_right_lower_contact_shift(
+    chain,
+    lower_unit_index,
+    dz_guess=-1.0,
+    dz_bounds=(-20.0, 5.0),
+    contact_tolerance=1e-6,
+    verbose=True,
+):
+    """
+    Translate the intermediate FREE unit and everything above it
+    vertically toward contact between its R-B segment and the
+    lower RAILED unit's R node.
 
+    For a 3-unit subset starting at Unit 0:
+
+        target contact:
+            Unit 1 R-B segment with Unit 0 R node
+
+    While moving downward, also monitor:
+
+        Unit 1 L-T segment with Unit 0 T node
+
+    If that second contact becomes limiting first, stop at the
+    closest nonpenetrating configuration instead of allowing
+    penetration.
+    """
+
+    intermediate_unit_index = (
+        lower_unit_index + 1
+    )
+
+    if intermediate_unit_index >= len(chain.units):
+        raise ValueError(
+            "No intermediate unit exists above "
+            f"Unit {lower_unit_index}."
+        )
+
+    contact_offset = (
+        chain.node_strut_contact_offset
+    )
+
+    # ---------------------------------------------------------
+    # 1. Save starting configuration
+    #
+    # Every trial translation starts from this exact state.
+    # ---------------------------------------------------------
+
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    # ---------------------------------------------------------
+    # 2. Evaluate both relevant lower contacts at a trial dz
+    # ---------------------------------------------------------
+
+    def evaluate_contacts(dz):
+
+        chain._restore_coordinates(
+            starting_coordinates
+        )
+
+        # Move Unit 1 and everything above it together.
+        _translate_units_from(
+            chain,
+            start_unit_index=intermediate_unit_index,
+            dy=0.0,
+            dz=dz,
+        )
+
+        # -----------------------------------------------------
+        # Target contact:
+        #
+        #     Unit 1 R-B segment
+        #         with
+        #     Unit 0 R node
+        # -----------------------------------------------------
+
+        lower_right_node = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}R"
+            )
+        )
+
+        intermediate_right_segment = (
+            chain.get_segment_by_descriptor(
+                f"{intermediate_unit_index}R"
+                f"{intermediate_unit_index}B"
+            )
+        )
+
+        right_gap = get_node_segment_gap(
+            lower_right_node,
+            intermediate_right_segment,
+            "counterclockwise",
+        )
+
+        right_clearance = (
+            right_gap.result.length_mm
+            - contact_offset
+        )
+
+        # -----------------------------------------------------
+        # Competing contact:
+        #
+        #     Unit 1 L-T segment
+        #         with
+        #     Unit 0 T node
+        #
+        # This is the penetration we explicitly want to prevent.
+        # -----------------------------------------------------
+
+        lower_top_node = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}T"
+            )
+        )
+
+        intermediate_left_segment = (
+            chain.get_segment_by_descriptor(
+                f"{intermediate_unit_index}L"
+                f"{intermediate_unit_index}T"
+            )
+        )
+
+        left_gap = get_node_segment_gap(
+            lower_top_node,
+            intermediate_left_segment,
+            "clockwise",
+        )
+
+        left_clearance = (
+            abs(left_gap.result.length_mm)
+            - contact_offset
+        )
+
+        return {
+            "right_clearance": float(
+                right_clearance
+            ),
+            "left_clearance": float(
+                left_clearance
+            ),
+        }
+
+    # ---------------------------------------------------------
+    # 3. Find the dz that WOULD make the target contact zero
+    # ---------------------------------------------------------
+
+    def residual(x):
+
+        result = evaluate_contacts(
+            x[0]
+        )
+
+        return np.array([
+            result[
+                "right_clearance"
+            ]
+        ])
+
+    solution = least_squares(
+        residual,
+        x0=np.array(
+            [dz_guess],
+            dtype=float,
+        ),
+        bounds=(
+            [dz_bounds[0]],
+            [dz_bounds[1]],
+        ),
+        xtol=1e-12,
+        ftol=1e-12,
+        gtol=1e-12,
+    )
+
+    target_dz = float(
+        solution.x[0]
+    )
+
+    # ---------------------------------------------------------
+    # 4. Check whether Unit 1L-T / Unit 0T becomes limiting
+    #    before we reach the desired right-side contact.
+    #
+    # We know dz = 0 is the starting configuration.
+    # target_dz is the full desired downward motion.
+    #
+    # If target_dz is already valid, use it directly.
+    # Otherwise bisect between zero and target_dz to find the
+    # largest valid downward shift.
+    # ---------------------------------------------------------
+
+    target_result = (
+        evaluate_contacts(
+            target_dz
+        )
+    )
+
+    target_is_valid = (
+        target_result[
+            "left_clearance"
+        ]
+        >= -contact_tolerance
+    )
+
+    constraint_limited = False
+
+    if target_is_valid:
+
+        dz = (
+            target_dz
+        )
+
+    else:
+
+        constraint_limited = True
+
+        # -----------------------------------------------------
+        # The requested target shift penetrates 1L1T / 0T.
+        #
+        # Find the last nonpenetrating shift between:
+        #
+        #     dz = 0
+        #     dz = target_dz
+        # -----------------------------------------------------
+
+        valid_alpha = 0.0
+        invalid_alpha = 1.0
+
+        dz_tolerance = 1e-9
+
+        while (
+            abs(
+                invalid_alpha
+                - valid_alpha
+            )
+            * abs(target_dz)
+            > dz_tolerance
+        ):
+
+            trial_alpha = (
+                valid_alpha
+                + invalid_alpha
+            ) / 2.0
+
+            trial_dz = (
+                trial_alpha
+                * target_dz
+            )
+
+            trial_result = (
+                evaluate_contacts(
+                    trial_dz
+                )
+            )
+
+            trial_valid = (
+                trial_result[
+                    "left_clearance"
+                ]
+                >= -contact_tolerance
+            )
+
+            if trial_valid:
+
+                valid_alpha = (
+                    trial_alpha
+                )
+
+            else:
+
+                invalid_alpha = (
+                    trial_alpha
+                )
+
+        dz = (
+            valid_alpha
+            * target_dz
+        )
+
+    # ---------------------------------------------------------
+    # 5. Leave chain at final reachable configuration
+    # ---------------------------------------------------------
+
+    final_result = (
+        evaluate_contacts(
+            dz
+        )
+    )
+
+    right_clearance = (
+        final_result[
+            "right_clearance"
+        ]
+    )
+
+    left_clearance = (
+        final_result[
+            "left_clearance"
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # 6. Determine what happened
+    # ---------------------------------------------------------
+
+    target_contact_reached = (
+        solution.success
+        and abs(
+            right_clearance
+        )
+        <= contact_tolerance
+    )
+
+    competing_contact_reached = (
+        abs(
+            left_clearance
+        )
+        <= contact_tolerance
+    )
+
+    success = (
+        target_contact_reached
+        or constraint_limited
+    )
+
+    # ---------------------------------------------------------
+    # 7. Report
+    # ---------------------------------------------------------
+
+    if verbose:
+
+        print(
+            "\nLower contact shift:"
+        )
+
+        print(
+            f"  desired dz: "
+            f"{target_dz:.6f} mm"
+        )
+
+        print(
+            f"  actual reachable dz: "
+            f"{dz:.6f} mm"
+        )
+
+        print(
+            f"  1R1B-0R clearance: "
+            f"{right_clearance:.9f} mm"
+        )
+
+        print(
+            f"  1L1T-0T clearance: "
+            f"{left_clearance:.9f} mm"
+        )
+
+        print(
+            f"  target contact reached: "
+            f"{target_contact_reached}"
+        )
+
+        print(
+            f"  constraint limited: "
+            f"{constraint_limited}"
+        )
+
+        if constraint_limited:
+
+            print(
+                "  1L1T-0T became limiting before "
+                "1R1B-0R contact could be reached."
+            )
+
+        elif target_contact_reached:
+
+            print(
+                "  desired 1R1B-0R contact reached."
+            )
+
+    # ---------------------------------------------------------
+    # 8. Return
+    # ---------------------------------------------------------
+
+    return {
+        "success": success,
+        "solver_success": (
+            solution.success
+        ),
+        "lower_unit_index": (
+            lower_unit_index
+        ),
+        "intermediate_unit_index": (
+            intermediate_unit_index
+        ),
+        "target_dz": (
+            target_dz
+        ),
+        "dz": (
+            dz
+        ),
+        "right_clearance": (
+            right_clearance
+        ),
+        "left_clearance": (
+            left_clearance
+        ),
+        "contact_reached": (
+            target_contact_reached
+        ),
+        "constraint_limited": (
+            constraint_limited
+        ),
+        "limiting_contact": (
+            (
+                f"{intermediate_unit_index}L"
+                f"{intermediate_unit_index}T-"
+                f"{lower_unit_index}T"
+            )
+            if constraint_limited
+            else None
+        ),
+        "solution": (
+            solution
+        ),
+    }
 def _try_limiting_configuration_three_unit(
     chain,
     start_unit_index=0,
@@ -1696,6 +2119,35 @@ def _try_limiting_configuration_three_unit(
             verbose=False,
         )
     )
+
+    lower_contact_result = find_right_lower_contact_shift(
+        chain=chain,
+        lower_unit_index=unit_0_index,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+
+    motions.append({
+        "type": "translate_from",
+        "start_unit_index": unit_1_index,
+        "dy": 0.0,
+        "dz": lower_contact_result["dz"],
+    })
+
+    if not lower_contact_result["success"]:
+        return {
+            "success": False,
+            "direction": direction,
+            "start_unit_index": start_unit_index,
+            "trial_theta_deg": theta_deg,
+            "max_theta_deg": max_theta_deg,
+            "z_shift": z_shift,
+            "motions": motions,
+            "two_unit_solution": result,
+            "cascade_result": cascade_result,
+            "lower_contact_result": lower_contact_result,
+            "segment_contact_result": None,
+        }
 
     motions.append({
         "type": "propagate_free_unit_rotation",
