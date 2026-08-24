@@ -7,8 +7,11 @@ Workspace functions used to examine RAMMs.
 # ============================================================================
 import numpy as np
 import sympy as sp
+from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+
+from ramms.plotting import plot_geometry
 plt.style.use("seaborn-v0_8-whitegrid")
 import plotly.graph_objects as go
 import copy
@@ -40,6 +43,33 @@ from .kinematics import (
 )
 from .mobility import configuration_is_valid
 
+#TODO: temp for testing; remove later# visual aids to mimic physical geometry
+NODE_DIAMETER_PLOT = 1200
+SEG_LINE_WIDTH = 30
+RAIL_VISUAL_OFFSET = 1.2
+RAIL_VISUAL_SHORTTEN = 2
+
+# graph dimentions to match physical geometry
+TWO_UNIT_YLIM = (-5, 30)
+THREE_UNIT_YLIM = (-5, 50)
+FOUR_UNIT_YLIM = (-5, 65)
+FIVE_UNIT_YLIM = (-5, 80)
+SIX_UNIT_YLIM = (-5, 95)
+
+XLIM = (-15, 15)
+XLIM_WIDE = (-25, 25)
+
+TWO_UNIT_ROTATED_RIGHT_XLIM=(-15, 25)
+TWO_UNIT_ROTATED_LEFT_XLIM = (-25, 15)
+THREE_UNIT_ROTATED_RIGHT_XLIM=(-15, 25)
+THREE_UNIT_ROTATED_LEFT_XLIM = (-25, 15)
+FIVE_UNIT_ROTATED_RIGHT_XLIM=(-15, 35) # TODO: will need to reverse this for left rotation
+SIX_UNIT_ROTATED_RIGHT_XLIM=(-15, 45)
+
+ROTATED_THREE_UNIT_YLIM=(-5, 40)
+ROTATED_FOUR_UNIT_YLIM=(-5, 45)
+ROTATED_FIVE_UNIT_YLIM=(-5, 55)
+ROTATED_SIX_UNIT_YLIM=(-5, 65)
 
 # ============================================================================
 # Helpers
@@ -699,7 +729,7 @@ def find_right_segment_segment_contact(
 # ============================================================================
 # Motion Limiting Finders
 # ============================================================================
-def find_right_limiting_configuration_two_unit(
+def find_right_limiting_configuration_two_unit_old(
     chain,
     lower_unit_index=0,
     moving_unit_index=1,
@@ -708,7 +738,7 @@ def find_right_limiting_configuration_two_unit(
     theta_bounds=(-60.0, 0.0),
     z_bounds=(-8.0, 5.0),
     default_offset=10,
-    contact_offset=0.0, # node radius
+    contact_offset=0.0,  # node radius
     contact_tolerance=1e-6,
     verbose=True
 ):
@@ -732,50 +762,86 @@ def find_right_limiting_configuration_two_unit(
     """
 
     if contact_offset < 0:
-        raise ValueError("contact_offset must be nonnegative.")
+        raise ValueError(
+            "contact_offset must be nonnegative."
+        )
 
     if not 0 <= lower_unit_index < len(chain.units):
         raise IndexError(
-            f"Invalid lower unit index: {lower_unit_index}"
+            f"Invalid lower unit index: "
+            f"{lower_unit_index}"
         )
 
     if not 0 <= moving_unit_index < len(chain.units):
         raise IndexError(
-            f"Invalid moving unit index: {moving_unit_index}"
+            f"Invalid moving unit index: "
+            f"{moving_unit_index}"
         )
 
-    # Save the configuration at the beginning of the solve.
-    # Every trial configuration is evaluated relative to this state.
-    starting_coordinates = chain._save_coordinates()
+    # ---------------------------------------------------------
+    # Save configuration at beginning of solve.
+    #
+    # Every trial is evaluated from this state.
+    # ---------------------------------------------------------
 
-    node_R_descriptor = f"{lower_unit_index}R"
-    node_T_descriptor = f"{lower_unit_index}T"
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    # ---------------------------------------------------------
+    # Target geometry descriptors
+    # ---------------------------------------------------------
+
+    node_R_descriptor = (
+        f"{lower_unit_index}R"
+    )
+
+    node_T_descriptor = (
+        f"{lower_unit_index}T"
+    )
 
     segment_RB_descriptor = (
-        f"{moving_unit_index}R{moving_unit_index}B"
+        f"{moving_unit_index}R"
+        f"{moving_unit_index}B"
     )
 
     segment_BL_descriptor = (
-        f"{moving_unit_index}B{moving_unit_index}L"
+        f"{moving_unit_index}B"
+        f"{moving_unit_index}L"
     )
 
+    # ---------------------------------------------------------
     # Determine which side of each segment is valid in the
-    # default, nonpenetrating configuration.
+    # starting nonpenetrating configuration.
+    #
+    # IMPORTANT:
+    # Use the actual requested unit indices rather than
+    # hard-coded Unit 0 / Unit 1 descriptors.
+    # ---------------------------------------------------------
+
     right_side = get_reference_side(
         chain=chain,
-        node_descriptor="0R",
-        segment_descriptor="1R1B",
+        node_descriptor=node_R_descriptor,
+        segment_descriptor=segment_RB_descriptor,
         orientation="counterclockwise",
     )
 
     top_side = get_reference_side(
         chain=chain,
-        node_descriptor="0T",
-        segment_descriptor="1B1L",
+        node_descriptor=node_T_descriptor,
+        segment_descriptor=segment_BL_descriptor,
         orientation="clockwise",
     )
 
-    def evaluate_target_gaps(theta_deg, z_shift):
+    # ---------------------------------------------------------
+    # Evaluate the two target gaps for a candidate theta/z pair
+    # ---------------------------------------------------------
+
+    def evaluate_target_gaps(
+        theta_deg,
+        z_shift
+    ):
+
         set_adjacent_unit_configuration(
             chain=chain,
             moving_unit_index=moving_unit_index,
@@ -784,20 +850,28 @@ def find_right_limiting_configuration_two_unit(
             z_shift=z_shift,
         )
 
-        segment_RB = chain.get_segment_by_descriptor(
-            segment_RB_descriptor
+        segment_RB = (
+            chain.get_segment_by_descriptor(
+                segment_RB_descriptor
+            )
         )
 
-        segment_BL = chain.get_segment_by_descriptor(
-            segment_BL_descriptor
+        segment_BL = (
+            chain.get_segment_by_descriptor(
+                segment_BL_descriptor
+            )
         )
 
-        node_R = chain.get_node_by_descriptor(
-            node_R_descriptor
+        node_R = (
+            chain.get_node_by_descriptor(
+                node_R_descriptor
+            )
         )
 
-        node_T = chain.get_node_by_descriptor(
-            node_T_descriptor
+        node_T = (
+            chain.get_node_by_descriptor(
+                node_T_descriptor
+            )
         )
 
         gap_right = get_node_segment_gap(
@@ -817,135 +891,1020 @@ def find_right_limiting_configuration_two_unit(
             gap_top.result.length_mm
         )
 
+    # ---------------------------------------------------------
+    # Residual vector
+    #
+    # We want both physical clearances to become zero.
+    # ---------------------------------------------------------
+
     def residuals(x):
+
         theta_deg, z_shift = x
 
-        signed_gap_right, signed_gap_top = evaluate_target_gaps(
+        (
+            signed_gap_right,
+            signed_gap_top
+        ) = evaluate_target_gaps(
             theta_deg,
             z_shift
         )
 
         # Reorient each signed gap so it is positive on the
         # valid side of the segment.
-        separation_right = right_side * signed_gap_right
-        separation_top = top_side * signed_gap_top
+        separation_right = (
+            right_side
+            * signed_gap_right
+        )
+
+        separation_top = (
+            top_side
+            * signed_gap_top
+        )
 
         # Physical contact occurs when:
-        # oriented centerline separation = contact_offset
-        clearance_right = separation_right - contact_offset
-        clearance_top = separation_top - contact_offset
+        #
+        # oriented centerline separation
+        #     =
+        # contact offset
+        clearance_right = (
+            separation_right
+            - contact_offset
+        )
+
+        clearance_top = (
+            separation_top
+            - contact_offset
+        )
 
         return np.array([
             clearance_right,
             clearance_top
         ])
 
+    # ---------------------------------------------------------
+    # Solve for theta and vertical shift
+    # ---------------------------------------------------------
+
     solution = least_squares(
         residuals,
-        x0=np.array([theta_guess, z_guess], dtype=float),
+        x0=np.array(
+            [
+                theta_guess,
+                z_guess
+            ],
+            dtype=float
+        ),
         bounds=(
-            [theta_bounds[0], z_bounds[0]],
-            [theta_bounds[1], z_bounds[1]]
+            [
+                theta_bounds[0],
+                z_bounds[0]
+            ],
+            [
+                theta_bounds[1],
+                z_bounds[1]
+            ]
         ),
         xtol=1e-12,
         ftol=1e-12,
         gtol=1e-12
     )
 
-    theta_deg, z_shift = solution.x
+    theta_deg, z_shift = (
+        solution.x
+    )
 
-    # Leave the chain in the solved configuration.
-    signed_gap_right, signed_gap_top = evaluate_target_gaps(
+    # ---------------------------------------------------------
+    # Leave the chain in the solved configuration
+    # ---------------------------------------------------------
+
+    (
+        signed_gap_right,
+        signed_gap_top
+    ) = evaluate_target_gaps(
         theta_deg,
         z_shift
     )
 
-    separation_right = right_side * signed_gap_right
-    separation_top = top_side * signed_gap_top
+    separation_right = (
+        right_side
+        * signed_gap_right
+    )
 
-    clearance_right = separation_right - contact_offset
-    clearance_top = separation_top - contact_offset
+    separation_top = (
+        top_side
+        * signed_gap_top
+    )
+
+    clearance_right = (
+        separation_right
+        - contact_offset
+    )
+
+    clearance_top = (
+        separation_top
+        - contact_offset
+    )
 
     residual_norm = np.linalg.norm([
         clearance_right,
         clearance_top
     ])
 
+    # ---------------------------------------------------------
+    # Validate target double-contact configuration
+    # ---------------------------------------------------------
+
     valid = (
         solution.success
-        and abs(clearance_right) <= contact_tolerance
-        and abs(clearance_top) <= contact_tolerance
+        and abs(
+            clearance_right
+        ) <= contact_tolerance
+        and abs(
+            clearance_top
+        ) <= contact_tolerance
     )
 
+    # ---------------------------------------------------------
+    # Print results
+    # ---------------------------------------------------------
+
     if verbose:
-        print(f"Solver success: {solution.success}")
-        print(f"Physically valid: {valid}")
-        print(f"θ: {theta_deg:.6f}°")
-        print(f"z shift: {z_shift:.6f} mm")
-        print(f"Contact offset: {contact_offset:.6f} mm")
+
+        print(
+            f"Solver success: "
+            f"{solution.success}"
+        )
+
+        print(
+            f"Physically valid: "
+            f"{valid}"
+        )
+
+        print(
+            f"θ: "
+            f"{theta_deg:.6f}°"
+        )
+
+        print(
+            f"z shift: "
+            f"{z_shift:.6f} mm"
+        )
+
+        print(
+            f"Contact offset: "
+            f"{contact_offset:.6f} mm"
+        )
+
         print(
             f"Reference side "
-            f"{segment_RB_descriptor}–{node_R_descriptor}: "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
             f"{right_side:+.0f}"
         )
+
         print(
             f"Reference side "
-            f"{segment_BL_descriptor}–{node_T_descriptor}: "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
             f"{top_side:+.0f}"
         )
 
         print(
             f"Signed gap "
-            f"{segment_RB_descriptor}–{node_R_descriptor}: "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
             f"{signed_gap_right:.9f} mm"
         )
+
         print(
             f"Oriented separation "
-            f"{segment_RB_descriptor}–{node_R_descriptor}: "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
             f"{separation_right:.9f} mm"
         )
+
         print(
             f"Clearance "
-            f"{segment_RB_descriptor}–{node_R_descriptor}: "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
             f"{clearance_right:.9f} mm"
         )
 
         print(
             f"Signed gap "
-            f"{segment_BL_descriptor}–{node_T_descriptor}: "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
             f"{signed_gap_top:.9f} mm"
         )
+
         print(
             f"Oriented separation "
-            f"{segment_BL_descriptor}–{node_T_descriptor}: "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
             f"{separation_top:.9f} mm"
         )
+
         print(
             f"Clearance "
-            f"{segment_BL_descriptor}–{node_T_descriptor}: "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
             f"{clearance_top:.9f} mm"
         )
 
-        print(f"Residual norm: {residual_norm:.3e}")
+        print(
+            f"Residual norm: "
+            f"{residual_norm:.3e}"
+        )
+
+    # ---------------------------------------------------------
+    # Return
+    # ---------------------------------------------------------
 
     return {
         "success": valid,
-        "solver_success": solution.success,
-        "lower_unit_index": lower_unit_index,
-        "moving_unit_index": moving_unit_index,
-        "theta_deg": theta_deg,
-        "z_shift": z_shift,
-        "contact_offset": contact_offset,
-        "right_side": right_side,
-        "top_side": top_side,
-        "signed_gap_right": signed_gap_right,
-        "signed_gap_top": signed_gap_top,
-        "separation_right": separation_right,
-        "separation_top": separation_top,
-        "clearance_right": clearance_right,
-        "clearance_top": clearance_top,
-        "residual_norm": residual_norm,
-        "solution": solution
+        "solver_success": (
+            solution.success
+        ),
+        "lower_unit_index": (
+            lower_unit_index
+        ),
+        "moving_unit_index": (
+            moving_unit_index
+        ),
+        "theta_deg": (
+            theta_deg
+        ),
+        "z_shift": (
+            z_shift
+        ),
+        "contact_offset": (
+            contact_offset
+        ),
+        "right_side": (
+            right_side
+        ),
+        "top_side": (
+            top_side
+        ),
+        "signed_gap_right": (
+            signed_gap_right
+        ),
+        "signed_gap_top": (
+            signed_gap_top
+        ),
+        "separation_right": (
+            separation_right
+        ),
+        "separation_top": (
+            separation_top
+        ),
+        "clearance_right": (
+            clearance_right
+        ),
+        "clearance_top": (
+            clearance_top
+        ),
+        "residual_norm": (
+            residual_norm
+        ),
+        "solution": (
+            solution
+        )
+    }
+
+def resolve_shared_rail_crossing(
+    chain,
+    railed_unit_index,
+    moving_unit_index,
+    angle_step_deg=0.1,
+    contact_tolerance=1e-6,
+    max_steps=500,
+    verbose=True,
+):
+    """
+    Back the upper FREE unit out of an invalid shared-rail
+    configuration by reducing its right rotation.
+
+    Example for Units 2-3:
+
+        shared rail:
+            1T and 3B inside Unit 2
+
+        required:
+            3B must remain above 1T
+
+        additional requirement:
+            3B3L must remain on the valid side of 2T.
+    """
+
+    lower_free_index = (
+        railed_unit_index - 1
+    )
+
+    # Save the state produced by the 2-unit solve.
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    lower_shared_node = (
+        chain.units[
+            lower_free_index
+        ].top_node
+    )
+
+    moving_bottom_node = (
+        chain.units[
+            moving_unit_index
+        ].bottom_node
+    )
+
+    moving_BL_segment = (
+        chain.get_segment_by_descriptor(
+            f"{moving_unit_index}B"
+            f"{moving_unit_index}L"
+        )
+    )
+
+    railed_top_node = (
+        chain.units[
+            railed_unit_index
+        ].top_node
+    )
+
+    # Determine the valid side of 2T relative to 3B3L
+    # from the configuration we are starting from.
+    valid_side = get_reference_side(
+        chain=chain,
+        node_descriptor=(
+            f"{railed_unit_index}T"
+        ),
+        segment_descriptor=(
+            f"{moving_unit_index}B"
+            f"{moving_unit_index}L"
+        ),
+        orientation="clockwise",
+    )
+
+    for step in range(max_steps):
+
+        # -----------------------------------------------------
+        # 1. Check shared-rail ordering
+        # -----------------------------------------------------
+
+        railed_unit = chain.units[
+            railed_unit_index
+        ]
+
+        rail_bottom = np.asarray(
+            railed_unit.bottom_node.coordinates,
+            dtype=float,
+        )
+
+        rail_top = np.asarray(
+            railed_unit.top_node.coordinates,
+            dtype=float,
+        )
+
+        rail_vector = (
+            rail_top - rail_bottom
+        )
+
+        rail_length = np.linalg.norm(
+            rail_vector
+        )
+
+        rail_direction = (
+            rail_vector / rail_length
+        )
+
+        lower_free_index = (
+            railed_unit_index - 1
+        )
+
+        lower_node = np.asarray(
+            chain.units[
+                lower_free_index
+            ].top_node.coordinates,
+            dtype=float,
+        )
+
+        upper_node = np.asarray(
+            chain.units[
+                moving_unit_index
+            ].bottom_node.coordinates,
+            dtype=float,
+        )
+
+        current_spacing = np.dot(
+            upper_node - lower_node,
+            rail_direction,
+        )
+
+        shared_clearance = (
+            current_spacing
+            - chain.node_diameter
+        )
+
+        # -----------------------------------------------------
+        # 2. Check 3B3L / 2T side
+        # -----------------------------------------------------
+
+        gap = get_node_segment_gap(
+            railed_top_node,
+            moving_BL_segment,
+            "clockwise",
+        )
+
+        separation = (
+            valid_side
+            * gap.result.length_mm
+        )
+
+        contact_clearance = (
+            separation
+            - chain.node_strut_contact_offset
+        )
+
+        # -----------------------------------------------------
+        # Done when both conditions are physically valid.
+        # -----------------------------------------------------
+
+        if (
+            shared_clearance
+            >= -contact_tolerance
+            and contact_clearance
+            >= -contact_tolerance
+        ):
+
+            if verbose:
+                print(
+                    "\nShared-rail crossing resolved:"
+                    f"\n  steps: {step}"
+                    f"\n  shared clearance: "
+                    f"{shared_clearance:.6f} mm"
+                    f"\n  3B3L-2T clearance: "
+                    f"{contact_clearance:.6f} mm"
+                )
+
+            return {
+                "success": True,
+                "steps": step,
+                "shared_clearance": (
+                    shared_clearance
+                ),
+                "contact_clearance": (
+                    contact_clearance
+                ),
+            }
+
+        # -----------------------------------------------------
+        # Reduce the right rotation.
+        #
+        # Right rotation is negative, so rotating LEFT means
+        # applying a positive incremental angle.
+        # -----------------------------------------------------
+
+        pivot = (
+            chain.units[
+                moving_unit_index
+            ].bottom_node
+        )
+
+        chain.units[
+            moving_unit_index
+        ].rotate(
+            pivot=pivot,
+            degrees=angle_step_deg,
+        )
+
+        # -----------------------------------------------------
+        # Restore shared-rail spacing by moving the upper unit
+        # along the rail.
+        #
+        # This is now done AFTER reducing rotation, rather than
+        # using translation alone to fix an impossible state.
+        # -----------------------------------------------------
+
+        enforce_shared_rail_node_spacing(
+            chain,
+            railed_unit_index=(
+                railed_unit_index
+            ),
+            tolerance=(
+                contact_tolerance
+            ),
+        )
+
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    raise InvalidRAMMGeometryError(
+        "Could not resolve shared-rail crossing "
+        "within the allowed rotation range."
+    )
+
+def find_right_limiting_configuration_two_unit(
+    chain,
+    lower_unit_index=0,
+    moving_unit_index=1,
+    theta_guess=-38.6,
+    z_guess=-1.8,
+    theta_bounds=(-60.0, 0.0),
+    z_bounds=(-8.0, 5.0),
+    default_offset=10,
+    contact_offset=0.0,
+    contact_tolerance=1e-6,
+    verbose=True
+):
+    """
+    Find the maximum-right-rotation double-contact configuration.
+
+    Target contacts:
+        moving_unit R-B segment with lower_unit R
+        moving_unit B-L segment with lower_unit T
+
+    During the solve, the moving B-L segment is not allowed
+    to cross through the lower unit's T node.
+
+    For the Unit 2-3 solve, this means:
+
+        3B3L may approach 2T,
+        but it may not pass through 2T.
+
+    Parameters
+    ----------
+    contact_offset : float, optional
+        Required centerline distance at physical contact.
+
+        For zero-thickness geometry:
+            contact_offset = 0
+
+        For a circular node and finite-width strut:
+            contact_offset = node radius + strut half-width
+    """
+
+    if contact_offset < 0:
+        raise ValueError(
+            "contact_offset must be nonnegative."
+        )
+
+    if not 0 <= lower_unit_index < len(chain.units):
+        raise IndexError(
+            f"Invalid lower unit index: "
+            f"{lower_unit_index}"
+        )
+
+    if not 0 <= moving_unit_index < len(chain.units):
+        raise IndexError(
+            f"Invalid moving unit index: "
+            f"{moving_unit_index}"
+        )
+
+    # ---------------------------------------------------------
+    # 1. Save starting configuration
+    # ---------------------------------------------------------
+
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    # ---------------------------------------------------------
+    # 2. Target descriptors
+    # ---------------------------------------------------------
+
+    node_R_descriptor = (
+        f"{lower_unit_index}R"
+    )
+
+    node_T_descriptor = (
+        f"{lower_unit_index}T"
+    )
+
+    segment_RB_descriptor = (
+        f"{moving_unit_index}R"
+        f"{moving_unit_index}B"
+    )
+
+    segment_BL_descriptor = (
+        f"{moving_unit_index}B"
+        f"{moving_unit_index}L"
+    )
+
+    # ---------------------------------------------------------
+    # 3. Determine valid sides in the starting configuration
+    # ---------------------------------------------------------
+
+    right_side = get_reference_side(
+        chain=chain,
+        node_descriptor=node_R_descriptor,
+        segment_descriptor=segment_RB_descriptor,
+        orientation="counterclockwise",
+    )
+
+    top_side = get_reference_side(
+        chain=chain,
+        node_descriptor=node_T_descriptor,
+        segment_descriptor=segment_BL_descriptor,
+        orientation="clockwise",
+    )
+
+    # ---------------------------------------------------------
+    # 4. Apply a trial theta / z configuration and evaluate
+    #    the two target gaps
+    # ---------------------------------------------------------
+
+    def evaluate_target_gaps(
+        theta_deg,
+        z_shift
+    ):
+
+        set_adjacent_unit_configuration(
+            chain=chain,
+            moving_unit_index=moving_unit_index,
+            starting_coordinates=starting_coordinates,
+            theta_deg=theta_deg,
+            z_shift=z_shift,
+        )
+
+        segment_RB = (
+            chain.get_segment_by_descriptor(
+                segment_RB_descriptor
+            )
+        )
+
+        segment_BL = (
+            chain.get_segment_by_descriptor(
+                segment_BL_descriptor
+            )
+        )
+
+        node_R = (
+            chain.get_node_by_descriptor(
+                node_R_descriptor
+            )
+        )
+
+        node_T = (
+            chain.get_node_by_descriptor(
+                node_T_descriptor
+            )
+        )
+
+        gap_right = get_node_segment_gap(
+            node_R,
+            segment_RB,
+            "counterclockwise"
+        )
+
+        gap_top = get_node_segment_gap(
+            node_T,
+            segment_BL,
+            "clockwise"
+        )
+
+        return (
+            gap_right.result.length_mm,
+            gap_top.result.length_mm
+        )
+
+    # ---------------------------------------------------------
+    # 5. Convert signed gaps into physical clearances
+    # ---------------------------------------------------------
+
+    def evaluate_clearances(x):
+
+        theta_deg, z_shift = x
+
+        (
+            signed_gap_right,
+            signed_gap_top
+        ) = evaluate_target_gaps(
+            theta_deg,
+            z_shift
+        )
+
+        separation_right = (
+            right_side
+            * signed_gap_right
+        )
+
+        separation_top = (
+            top_side
+            * signed_gap_top
+        )
+
+        clearance_right = (
+            separation_right
+            - contact_offset
+        )
+
+        clearance_top = (
+            separation_top
+            - contact_offset
+        )
+
+        return (
+            clearance_right,
+            clearance_top
+        )
+
+    # ---------------------------------------------------------
+    # 6. Objective
+    #
+    # We still want BOTH target clearances to become zero.
+    # ---------------------------------------------------------
+
+    def objective(x):
+
+        (
+            clearance_right,
+            clearance_top
+        ) = evaluate_clearances(x)
+
+        return float(
+            clearance_right**2
+            + clearance_top**2
+        )
+
+    # ---------------------------------------------------------
+    # 7. Nonpenetration constraint
+    #
+    # Do not allow:
+    #
+    #     moving_unit B-L
+    #
+    # to pass through:
+    #
+    #     lower_unit T
+    #
+    # For Units 2-3:
+    #
+    #     3B3L cannot cross 2T.
+    #
+    # SLSQP inequality constraints must satisfy:
+    #
+    #     constraint(x) >= 0
+    # ---------------------------------------------------------
+
+    def top_contact_nonpenetration_constraint(x):
+
+        _, clearance_top = (
+            evaluate_clearances(x)
+        )
+
+        return clearance_top
+
+    # ---------------------------------------------------------
+    # 8. Solve
+    # ---------------------------------------------------------
+
+    solution = minimize(
+        objective,
+        x0=np.array(
+            [
+                theta_guess,
+                z_guess
+            ],
+            dtype=float
+        ),
+        method="SLSQP",
+        bounds=[
+            theta_bounds,
+            z_bounds,
+        ],
+        constraints=[
+            {
+                "type": "ineq",
+                "fun": (
+                    top_contact_nonpenetration_constraint
+                ),
+            }
+        ],
+        options={
+            "ftol": 1e-12,
+            "maxiter": 500,
+            "disp": False,
+        },
+    )
+
+    theta_deg, z_shift = (
+        solution.x
+    )
+
+    # ---------------------------------------------------------
+    # 9. Leave chain at the final solved configuration
+    # ---------------------------------------------------------
+
+    (
+        signed_gap_right,
+        signed_gap_top
+    ) = evaluate_target_gaps(
+        theta_deg,
+        z_shift
+    )
+
+    separation_right = (
+        right_side
+        * signed_gap_right
+    )
+
+    separation_top = (
+        top_side
+        * signed_gap_top
+    )
+
+    clearance_right = (
+        separation_right
+        - contact_offset
+    )
+
+    clearance_top = (
+        separation_top
+        - contact_offset
+    )
+
+    residual_norm = np.linalg.norm([
+        clearance_right,
+        clearance_top
+    ])
+
+    # ---------------------------------------------------------
+    # 10. Validate
+    # ---------------------------------------------------------
+
+    top_contact_nonpenetrating = (
+        clearance_top
+        >= -contact_tolerance
+    )
+
+    valid = (
+        solution.success
+        and top_contact_nonpenetrating
+        and abs(
+            clearance_right
+        ) <= contact_tolerance
+        and abs(
+            clearance_top
+        ) <= contact_tolerance
+    )
+
+    # ---------------------------------------------------------
+    # 11. Print
+    # ---------------------------------------------------------
+
+    if verbose:
+
+        print(
+            f"Solver success: "
+            f"{solution.success}"
+        )
+
+        print(
+            f"Physically valid: "
+            f"{valid}"
+        )
+
+        print(
+            f"θ: "
+            f"{theta_deg:.6f}°"
+        )
+
+        print(
+            f"z shift: "
+            f"{z_shift:.6f} mm"
+        )
+
+        print(
+            f"Contact offset: "
+            f"{contact_offset:.6f} mm"
+        )
+
+        print(
+            f"Reference side "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
+            f"{right_side:+.0f}"
+        )
+
+        print(
+            f"Reference side "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
+            f"{top_side:+.0f}"
+        )
+
+        print(
+            f"Signed gap "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
+            f"{signed_gap_right:.9f} mm"
+        )
+
+        print(
+            f"Oriented separation "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
+            f"{separation_right:.9f} mm"
+        )
+
+        print(
+            f"Clearance "
+            f"{segment_RB_descriptor}–"
+            f"{node_R_descriptor}: "
+            f"{clearance_right:.9f} mm"
+        )
+
+        print(
+            f"Signed gap "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
+            f"{signed_gap_top:.9f} mm"
+        )
+
+        print(
+            f"Oriented separation "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
+            f"{separation_top:.9f} mm"
+        )
+
+        print(
+            f"Clearance "
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor}: "
+            f"{clearance_top:.9f} mm"
+        )
+
+        print(
+            f"{segment_BL_descriptor}–"
+            f"{node_T_descriptor} "
+            f"nonpenetrating: "
+            f"{top_contact_nonpenetrating}"
+        )
+
+        print(
+            f"Residual norm: "
+            f"{residual_norm:.3e}"
+        )
+
+    # ---------------------------------------------------------
+    # 12. Return
+    # ---------------------------------------------------------
+
+    return {
+        "success": valid,
+        "solver_success": (
+            solution.success
+        ),
+        "lower_unit_index": (
+            lower_unit_index
+        ),
+        "moving_unit_index": (
+            moving_unit_index
+        ),
+        "theta_deg": (
+            theta_deg
+        ),
+        "z_shift": (
+            z_shift
+        ),
+        "contact_offset": (
+            contact_offset
+        ),
+        "right_side": (
+            right_side
+        ),
+        "top_side": (
+            top_side
+        ),
+        "signed_gap_right": (
+            signed_gap_right
+        ),
+        "signed_gap_top": (
+            signed_gap_top
+        ),
+        "separation_right": (
+            separation_right
+        ),
+        "separation_top": (
+            separation_top
+        ),
+        "clearance_right": (
+            clearance_right
+        ),
+        "clearance_top": (
+            clearance_top
+        ),
+        "top_contact_nonpenetrating": (
+            top_contact_nonpenetrating
+        ),
+        "residual_norm": (
+            residual_norm
+        ),
+        "solution": (
+            solution
+        )
     }
 
 
@@ -1437,6 +2396,7 @@ def find_limiting_configuration_two_unit(
         "solver_result": result,
     }
 
+
 def find_right_lower_contact_shift(
     chain,
     lower_unit_index,
@@ -1861,6 +2821,8 @@ def find_right_lower_contact_shift(
             solution
         ),
     }
+
+
 def _try_limiting_configuration_three_unit(
     chain,
     start_unit_index=0,
@@ -2265,6 +3227,7 @@ def _try_limiting_configuration_three_unit(
         ),
     }
 
+
 def find_limiting_configuration_three_unit(
     chain,
     start_unit_index=0,
@@ -2652,6 +3615,7 @@ def find_limiting_configuration_three_unit(
         ),
     }
 
+
 def find_limiting_configuration_four_unit(
     chain,
     start_unit_index=0,
@@ -2705,6 +3669,16 @@ def find_limiting_configuration_four_unit(
         railed_unit_index=subset_unit_2_idx,
     )
 
+    plot_geometry(
+        chain,
+        plot_title="Intermediate plot",
+        xlim=XLIM,
+        ylim=FOUR_UNIT_YLIM,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
     if verbose:
         print(
             "\nShared-rail correction:",
@@ -2746,6 +3720,28 @@ def find_limiting_configuration_four_unit(
         )
     )
 
+    shared_rail_resolution = resolve_shared_rail_crossing(
+        chain=chain,
+        railed_unit_index=subset_unit_2_idx,
+        moving_unit_index=subset_unit_3_idx,
+        contact_tolerance=contact_tolerance,
+        verbose=verbose,
+    )
+
+    # Almost worked; causes penetration at 3B3B and 2T
+    """
+    final_shared_rail_correction = enforce_shared_rail_node_spacing(
+        chain,
+        railed_unit_index=subset_unit_2_idx,
+        tolerance=contact_tolerance,
+    )
+
+    if verbose:
+        print(
+            "\nFinal shared-rail correction:",
+            final_shared_rail_correction,
+        )
+    """
     if verbose:
         print(
             f"\nUnit {subset_unit_2_idx}-"
@@ -2775,6 +3771,7 @@ def find_limiting_configuration_four_unit(
         ),
         "shared_rail_correction": correction,
     }
+
 
 def find_limiting_configuration_five_unit(
     chain,
@@ -2859,12 +3856,6 @@ def find_limiting_configuration_six_unit(
         )
     )
 
-
-def find_limiting_configuration_even_n_unit_helper():
-    pass
-
-def find_limiting_configuration_odd_n_unit_helper():
-    pass
 
 def find_limiting_configuration_n_unit(
     chain:RAMM_Chain,

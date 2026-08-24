@@ -356,7 +356,7 @@ def check_n_unit_mobility(n_units, direction):
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
-    #check_four_unit_mobility()
+    check_four_unit_mobility()
     #check_five_unit_mobility()
     #check_six_unit_mobility()
-    check_n_unit_mobility(7, "right")
+    #check_n_unit_mobility(7, "right")
