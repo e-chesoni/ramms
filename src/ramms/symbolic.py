@@ -25,6 +25,7 @@ from matplotlib.lines import Line2D
 from dataclasses import dataclass
 from scipy.optimize import root
 from scipy.optimize import least_squares
+from types import SimpleNamespace
 
 from .exceptions import InvalidRAMMGeometryError
 from .core import UnitType
@@ -202,8 +203,99 @@ def get_segment_segment_symbolic_gap(
         signed_gap=sp.simplify(signed_gap)
     )
 
+def get_shared_rail_node_node_symbolic_gap(
+    lower_node,
+    upper_node,
+    railed_unit,
+    node_diameter,
+):
+    """
+    Symbolic clearance between two FREE nodes sharing the
+    centerline of an interior RAILED unit.
 
-def get_candidate_gaps(chain, verbose=True):
+    Example for RAILED Unit 2:
+
+        lower node = 1T
+        upper node = 3B
+
+    Gap is measured along Unit 2's local rail direction.
+
+        gap > 0 : separated
+        gap = 0 : contact
+        gap < 0 : crossed / overlapping
+    """
+
+    lower_y, lower_z = sp.symbols(
+        f"{lower_node.descriptor}_y "
+        f"{lower_node.descriptor}_z",
+        real=True,
+    )
+
+    upper_y, upper_z = sp.symbols(
+        f"{upper_node.descriptor}_y "
+        f"{upper_node.descriptor}_z",
+        real=True,
+    )
+
+    rail_B_y, rail_B_z = sp.symbols(
+        f"{railed_unit.bottom_node.descriptor}_y "
+        f"{railed_unit.bottom_node.descriptor}_z",
+        real=True,
+    )
+
+    rail_T_y, rail_T_z = sp.symbols(
+        f"{railed_unit.top_node.descriptor}_y "
+        f"{railed_unit.top_node.descriptor}_z",
+        real=True,
+    )
+
+    lower = sp.Matrix([
+        lower_y,
+        lower_z,
+    ])
+
+    upper = sp.Matrix([
+        upper_y,
+        upper_z,
+    ])
+
+    rail_B = sp.Matrix([
+        rail_B_y,
+        rail_B_z,
+    ])
+
+    rail_T = sp.Matrix([
+        rail_T_y,
+        rail_T_z,
+    ])
+
+    rail_vector = (
+        rail_T - rail_B
+    )
+
+    rail_length = sp.sqrt(
+        rail_vector.dot(
+            rail_vector
+        )
+    )
+
+    rail_direction = (
+        rail_vector
+        / rail_length
+    )
+
+    spacing = (
+        upper - lower
+    ).dot(
+        rail_direction
+    )
+
+    return sp.simplify(
+        spacing - node_diameter
+    )
+
+
+def get_candidate_gaps_old(chain, verbose=True):
     """
     Return candidate node-segment gaps for RAILED-FREE unit pairs.
 
@@ -587,7 +679,7 @@ def get_candidate_gaps(chain, verbose=True):
     return gaps
 
 
-def get_active_gap_vector(
+def get_active_gap_vector_old(
     candidate_gaps,
     contact_offset=0.0,
     contact_tolerance=1e-6,
@@ -707,6 +799,860 @@ def get_active_gap_vector(
 
     if print_active_gap_vector:
         sp.pprint(active_gap_vector)
+
+    return active_gap_vector
+
+
+def get_candidate_gaps(chain, verbose=True):
+    """
+    Return candidate gaps for the chain.
+
+    Includes
+    --------
+    1. RAILED-FREE neighboring node-segment / rail contacts:
+           (0, 1), (2, 3), ...
+
+    2. Skip-level RAILED-RAILED segment contacts:
+           (0, 2), (2, 4), ...
+
+    3. FREE-RAILED neighboring contacts:
+           (1, 2), (3, 4), ...
+
+    4. Shared-rail FREE node-node contacts:
+           1T <-> 3B along Unit 2 rail
+           3T <-> 5B along Unit 4 rail
+           5T <-> 7B along Unit 6 rail
+           ...
+
+       The node ordering is evaluated ALONG the local rail
+       direction, not in global z.
+    """
+
+    gaps = []
+
+    # =========================================================
+    # 1. RAILED-FREE neighboring pairs:
+    #
+    #     0-1
+    #     2-3
+    #     4-5
+    #     ...
+    # =========================================================
+
+    for base_unit_index in range(
+        0,
+        len(chain.units) - 1,
+        2
+    ):
+        lower_unit_index = base_unit_index
+        upper_unit_index = base_unit_index + 1
+
+        # ---------------------------------------------------------
+        # Upper FREE unit diamond struts
+        # ---------------------------------------------------------
+
+        upper_unit_segment_BL = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}B"
+                f"{upper_unit_index}L"
+            )
+        )
+
+        upper_unit_segment_TR = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}T"
+                f"{upper_unit_index}R"
+            )
+        )
+
+        upper_unit_segment_RB = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}R"
+                f"{upper_unit_index}B"
+            )
+        )
+
+        upper_unit_segment_LT = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}L"
+                f"{upper_unit_index}T"
+            )
+        )
+
+        # ---------------------------------------------------------
+        # Lower RAILED unit rails
+        # ---------------------------------------------------------
+
+        rail_0L = chain.get_rail(
+            lower_unit_index,
+            "left"
+        )
+
+        rail_0R = chain.get_rail(
+            lower_unit_index,
+            "right"
+        )
+
+        # ---------------------------------------------------------
+        # Lower RAILED unit diamond nodes
+        # ---------------------------------------------------------
+
+        lower_node_T = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}T"
+            )
+        )
+
+        lower_node_R = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}R"
+            )
+        )
+
+        lower_node_B = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}B"
+            )
+        )
+
+        lower_node_L = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}L"
+            )
+        )
+
+        # ---------------------------------------------------------
+        # Upper FREE node constrained by lower RAILED rails
+        # ---------------------------------------------------------
+
+        upper_node_B = (
+            chain.get_node_by_descriptor(
+                f"{upper_unit_index}B"
+            )
+        )
+
+        # ---------------------------------------------------------
+        # Candidate gaps
+        # ---------------------------------------------------------
+
+        gaps.extend([
+            # Lower top node vs upper FREE struts
+            get_node_segment_gap(
+                lower_node_T,
+                upper_unit_segment_BL,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                upper_unit_segment_TR,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                upper_unit_segment_RB,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                upper_unit_segment_LT,
+                "clockwise"
+            ),
+
+            # Lower bottom node vs upper FREE lower struts
+            get_node_segment_gap(
+                lower_node_B,
+                upper_unit_segment_BL,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_B,
+                upper_unit_segment_RB,
+                "counterclockwise"
+            ),
+
+            # Lower side nodes vs upper FREE lower struts
+            get_node_segment_gap(
+                lower_node_L,
+                upper_unit_segment_BL,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_R,
+                upper_unit_segment_RB,
+                "counterclockwise"
+            ),
+
+            # Upper FREE bottom node vs lower RAILED rails
+            get_node_segment_gap(
+                upper_node_B,
+                rail_0L,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                rail_0R,
+                "counterclockwise"
+            ),
+        ])
+
+    # =========================================================
+    # 2. Skip-level RAILED-RAILED pairs:
+    #
+    #     0-2
+    #     2-4
+    #     4-6
+    #     ...
+    # =========================================================
+
+    for base_unit_index in range(
+        0,
+        len(chain.units) - 2,
+        2
+    ):
+        lower_unit_index = base_unit_index
+        upper_unit_index = base_unit_index + 2
+
+        # ---------------------------------------------------------
+        # Lower RAILED unit struts
+        # ---------------------------------------------------------
+
+        lower_unit_segment_BL = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}B"
+                f"{lower_unit_index}L"
+            )
+        )
+
+        lower_unit_segment_TR = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}T"
+                f"{lower_unit_index}R"
+            )
+        )
+
+        lower_unit_segment_RB = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}R"
+                f"{lower_unit_index}B"
+            )
+        )
+
+        lower_unit_segment_LT = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}L"
+                f"{lower_unit_index}T"
+            )
+        )
+
+        if verbose:
+            print(
+                "Evaluating skip-level gaps"
+            )
+            print(
+                "Skip level lower unit segments: "
+                f"{lower_unit_segment_BL}, "
+                f"{lower_unit_segment_TR}, "
+                f"{lower_unit_segment_RB}, "
+                f"{lower_unit_segment_LT}"
+            )
+
+        # ---------------------------------------------------------
+        # Upper RAILED unit struts
+        # ---------------------------------------------------------
+
+        upper_unit_segment_BL = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}B"
+                f"{upper_unit_index}L"
+            )
+        )
+
+        upper_unit_segment_TR = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}T"
+                f"{upper_unit_index}R"
+            )
+        )
+
+        upper_unit_segment_RB = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}R"
+                f"{upper_unit_index}B"
+            )
+        )
+
+        upper_unit_segment_LT = (
+            chain.get_segment_by_descriptor(
+                f"{upper_unit_index}L"
+                f"{upper_unit_index}T"
+            )
+        )
+
+        if verbose:
+            print(
+                "Skip level upper unit segments: "
+                f"{upper_unit_segment_BL}, "
+                f"{upper_unit_segment_TR}, "
+                f"{upper_unit_segment_RB}, "
+                f"{upper_unit_segment_LT}"
+            )
+
+        # ---------------------------------------------------------
+        # Right-rotation skip-level contact
+        # ---------------------------------------------------------
+
+        try:
+            skip_level_gap_right = (
+                get_segment_segment_gap(
+                    lower_unit_segment_TR,
+                    upper_unit_segment_BL,
+                    contact_offset=(
+                        chain.segment_segment_contact_offset
+                    ),
+                    verbose=verbose
+                )
+            )
+
+            if verbose:
+                print(
+                    "Skip level gap with right rotation: "
+                    f"{skip_level_gap_right.length_mm}"
+                )
+
+            gaps.append(
+                skip_level_gap_right
+            )
+
+        except InvalidRAMMGeometryError:
+            if verbose:
+                print(
+                    f"Skipping "
+                    f"{lower_unit_segment_TR} and "
+                    f"{upper_unit_segment_BL}: "
+                    "finite segments do not currently overlap."
+                )
+
+    # =========================================================
+    # 3. FREE-RAILED neighboring pairs:
+    #
+    #     1-2
+    #     3-4
+    #     5-6
+    #     ...
+    # =========================================================
+
+    for lower_unit_index in range(
+        1,
+        len(chain.units) - 1,
+        2
+    ):
+        upper_unit_index = (
+            lower_unit_index + 1
+        )
+
+        lower_node_T = (
+            chain.get_node_by_descriptor(
+                f"{lower_unit_index}T"
+            )
+        )
+
+        rail_2L = chain.get_rail(
+            upper_unit_index,
+            "left"
+        )
+
+        rail_2R = chain.get_rail(
+            upper_unit_index,
+            "right"
+        )
+
+        # ---------------------------------------------------------
+        # Lower FREE unit diamond struts
+        # ---------------------------------------------------------
+
+        lower_unit_segment_BL = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}B"
+                f"{lower_unit_index}L"
+            )
+        )
+
+        lower_unit_segment_TR = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}T"
+                f"{lower_unit_index}R"
+            )
+        )
+
+        lower_unit_segment_RB = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}R"
+                f"{lower_unit_index}B"
+            )
+        )
+
+        lower_unit_segment_LT = (
+            chain.get_segment_by_descriptor(
+                f"{lower_unit_index}L"
+                f"{lower_unit_index}T"
+            )
+        )
+
+        # ---------------------------------------------------------
+        # Upper RAILED unit nodes
+        # ---------------------------------------------------------
+
+        upper_node_R = (
+            chain.get_node_by_descriptor(
+                f"{upper_unit_index}R"
+            )
+        )
+
+        upper_node_B = (
+            chain.get_node_by_descriptor(
+                f"{upper_unit_index}B"
+            )
+        )
+
+        upper_node_L = (
+            chain.get_node_by_descriptor(
+                f"{upper_unit_index}L"
+            )
+        )
+
+        # ---------------------------------------------------------
+        # Candidate gaps
+        # ---------------------------------------------------------
+
+        gaps.extend([
+            # Right-rotation candidates
+            get_node_segment_gap(
+                upper_node_L,
+                lower_unit_segment_LT,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                lower_unit_segment_RB,
+                "clockwise"
+            ),
+
+            # Left-rotation candidates
+            get_node_segment_gap(
+                upper_node_R,
+                lower_unit_segment_TR,
+                "counterclockwise"
+            ),
+
+            get_node_segment_gap(
+                upper_node_B,
+                lower_unit_segment_BL,
+                "clockwise"
+            ),
+
+            # Lower FREE top node constrained by upper RAILED rails
+            get_node_segment_gap(
+                lower_node_T,
+                rail_2L,
+                "clockwise"
+            ),
+
+            get_node_segment_gap(
+                lower_node_T,
+                rail_2R,
+                "counterclockwise"
+            ),
+        ])
+
+    # =========================================================
+    # 4. Shared-rail FREE node-node gaps
+    #
+    # Interior RAILED units:
+    #
+    #     Unit 2 rail:  1T <-> 3B
+    #     Unit 4 rail:  3T <-> 5B
+    #     Unit 6 rail:  5T <-> 7B
+    #     ...
+    #
+    # The separation is measured ALONG the local rail direction.
+    # =========================================================
+
+    for railed_unit_index in range(
+        2,
+        len(chain.units) - 1,
+        2
+    ):
+        lower_free_index = (
+            railed_unit_index - 1
+        )
+
+        upper_free_index = (
+            railed_unit_index + 1
+        )
+
+        lower_node = (
+            chain.get_node_by_descriptor(
+                f"{lower_free_index}T"
+            )
+        )
+
+        upper_node = (
+            chain.get_node_by_descriptor(
+                f"{upper_free_index}B"
+            )
+        )
+
+        railed_unit = (
+            chain.units[
+                railed_unit_index
+            ]
+        )
+
+        rail_bottom = np.asarray(
+            railed_unit.bottom_node.coordinates,
+            dtype=float,
+        )
+
+        rail_top = np.asarray(
+            railed_unit.top_node.coordinates,
+            dtype=float,
+        )
+
+        rail_vector = (
+            rail_top - rail_bottom
+        )
+
+        rail_length = np.linalg.norm(
+            rail_vector
+        )
+
+        if rail_length <= 1e-12:
+            raise InvalidRAMMGeometryError(
+                f"RAILED Unit "
+                f"{railed_unit_index} "
+                "has zero-length centerline."
+            )
+
+        rail_direction = (
+            rail_vector / rail_length
+        )
+
+        lower_position = np.asarray(
+            lower_node.coordinates,
+            dtype=float,
+        )
+
+        upper_position = np.asarray(
+            upper_node.coordinates,
+            dtype=float,
+        )
+
+        # Center-to-center spacing along the rail.
+        #
+        # IMPORTANT:
+        # Do NOT subtract node diameter here.
+        #
+        # We store the centerline spacing in length_mm just like
+        # the other gap candidates store centerline separation.
+        # get_active_gap_vector() will use the candidate-specific
+        # contact offset below.
+        spacing_along_rail = float(
+            np.dot(
+                upper_position - lower_position,
+                rail_direction,
+            )
+        )
+
+        shared_rail_gap = SimpleNamespace(
+            name=(
+                f"gap_{lower_free_index}T_"
+                f"{upper_free_index}B_"
+                f"along_{railed_unit_index}_rail"
+            ),
+
+            # Identify this special candidate type.
+            gap_type="shared_rail_node_node",
+
+            # Existing candidate fields.
+            node=None,
+            segment_1=None,
+            segment_2=None,
+            orientation=None,
+
+            # Shared-rail-specific fields.
+            lower_node=lower_node,
+            upper_node=upper_node,
+            railed_unit=railed_unit,
+
+            # Physical contact occurs at one node diameter.
+            contact_offset=chain.node_diameter,
+
+            # Preserve the existing candidate.result.length_mm API.
+            result=SimpleNamespace(
+                length_mm=spacing_along_rail
+            ),
+        )
+
+        gaps.append(
+            shared_rail_gap
+        )
+
+    return gaps
+
+
+def get_active_gap_vector(
+    candidate_gaps,
+    contact_offset=0.0,
+    contact_tolerance=1e-6,
+    print_gaps=True,
+    print_active_gap_vector=True
+):
+    """
+    Build the symbolic active-gap vector.
+
+    Supports:
+        1. node-segment gaps
+        2. segment-segment gaps
+        3. shared-rail node-node gaps
+
+    Shared-rail node-node examples:
+        1T <-> 3B along Unit 2 rail
+        3T <-> 5B along Unit 4 rail
+        ...
+    """
+
+    active_gap_expressions = []
+
+    print(
+        f"Evaluating gaps with default contact offset: "
+        f"{contact_offset} mm\n"
+        f"Numerical contact tolerance: "
+        f"{contact_tolerance} mm"
+    )
+
+    for candidate in candidate_gaps:
+
+        gap_length_mm = (
+            candidate.result.length_mm
+        )
+
+        # ---------------------------------------------------------
+        # Candidate-specific contact offset
+        #
+        # Existing candidates fall back to the supplied default.
+        #
+        # Shared-rail node-node candidates use node diameter.
+        # ---------------------------------------------------------
+
+        candidate_contact_offset = getattr(
+            candidate,
+            "contact_offset",
+            contact_offset,
+        )
+
+        clearance = (
+            gap_length_mm
+            - candidate_contact_offset
+        )
+
+        gap_type = getattr(
+            candidate,
+            "gap_type",
+            None,
+        )
+
+        # ---------------------------------------------------------
+        # Shared-rail node-node candidate
+        # ---------------------------------------------------------
+
+        is_shared_rail_node_node = (
+            gap_type
+            == "shared_rail_node_node"
+        )
+
+        # ---------------------------------------------------------
+        # Determine display objects
+        # ---------------------------------------------------------
+
+        if is_shared_rail_node_node:
+
+            contact_object_1 = (
+                candidate.lower_node
+            )
+
+            contact_object_2 = (
+                candidate.upper_node
+            )
+
+        elif candidate.node is not None:
+
+            contact_object_1 = (
+                candidate.segment_1
+            )
+
+            contact_object_2 = (
+                candidate.node
+            )
+
+        elif candidate.segment_2 is not None:
+
+            contact_object_1 = (
+                candidate.segment_1
+            )
+
+            contact_object_2 = (
+                candidate.segment_2
+            )
+
+        else:
+            raise ValueError(
+                f"Could not identify gap type for "
+                f"{candidate.name}."
+            )
+
+        # ---------------------------------------------------------
+        # Print numerical gap state
+        # ---------------------------------------------------------
+
+        if print_gaps:
+
+            if clearance < -contact_tolerance:
+
+                print(
+                    f"❌ PENETRATING! "
+                    f"{contact_object_1} and "
+                    f"{contact_object_2}\n"
+                    f"Gap: {clearance:.6f} mm"
+                )
+
+            elif math.isclose(
+                clearance,
+                0.0,
+                abs_tol=contact_tolerance
+            ):
+
+                display_clearance = 0.0
+
+                print(
+                    f"✅ CONTACT: "
+                    f"{contact_object_1} and "
+                    f"{contact_object_2}\n"
+                    f"Gap: "
+                    f"{display_clearance:.6f} mm"
+                )
+
+            else:
+
+                print(
+                    f"Gap between "
+                    f"{contact_object_1} and "
+                    f"{contact_object_2} is open.\n"
+                    f"Gap: {clearance:.6f} mm"
+                )
+
+        # ---------------------------------------------------------
+        # Add ONLY active contact constraints
+        # ---------------------------------------------------------
+
+        if not math.isclose(
+            clearance,
+            0.0,
+            abs_tol=contact_tolerance
+        ):
+            continue
+
+        # ---------------------------------------------------------
+        # Shared-rail node-node active gap
+        # ---------------------------------------------------------
+
+        if is_shared_rail_node_node:
+
+            symbolic_gap = (
+                get_shared_rail_node_node_symbolic_gap(
+                    lower_node=(
+                        candidate.lower_node
+                    ),
+                    upper_node=(
+                        candidate.upper_node
+                    ),
+                    railed_unit=(
+                        candidate.railed_unit
+                    ),
+                    node_diameter=(
+                        candidate.contact_offset
+                    ),
+                )
+            )
+
+            # Your helper already represents:
+            #
+            #     spacing_along_rail - node_diameter
+            #
+            # so DO NOT subtract the contact offset again here.
+            active_gap_expressions.append(
+                symbolic_gap
+            )
+
+        # ---------------------------------------------------------
+        # Node-segment active gap
+        # ---------------------------------------------------------
+
+        elif candidate.node is not None:
+
+            symbolic_gap = (
+                get_node_segment_symbolic_gap(
+                    candidate.node,
+                    candidate.segment_1,
+                    candidate.orientation
+                )
+            )
+
+            active_gap_expressions.append(
+                symbolic_gap.signed_gap
+                - candidate_contact_offset
+            )
+
+        # ---------------------------------------------------------
+        # Segment-segment active gap
+        # ---------------------------------------------------------
+
+        elif candidate.segment_2 is not None:
+
+            symbolic_gap = (
+                get_segment_segment_symbolic_gap(
+                    candidate.segment_1,
+                    candidate.segment_2
+                )
+            )
+
+            active_gap_expressions.append(
+                symbolic_gap.signed_gap
+                - candidate_contact_offset
+            )
+
+        else:
+
+            raise ValueError(
+                f"Gap {candidate.name} is neither "
+                "node-segment, segment-segment, "
+                "nor shared-rail node-node."
+            )
+
+    active_gap_vector = sp.Matrix(
+        active_gap_expressions
+    )
+
+    if print_active_gap_vector:
+        sp.pprint(
+            active_gap_vector
+        )
 
     return active_gap_vector
 
