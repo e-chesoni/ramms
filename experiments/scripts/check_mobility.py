@@ -36,7 +36,7 @@ from _fixtures import (
     ROTATED_FIVE_UNIT_YLIM,
     ROTATED_SIX_UNIT_YLIM,
 )
-from ramms.core import RAMM_Chain
+from ramms.core import RAMM_Chain, UnitType
 from ramms.plotting import plot_geometry
 from ramms.kinematics import (
     enforce_shared_rail_node_spacing,
@@ -83,6 +83,47 @@ def check_neighboring_free_node_distances(chain):
             f"Unit {unit_index - 1}T: "
             f"{distance:.6f} mm"
         )
+
+@log_call
+def check_top_to_bottom_node_distances(chain): 
+    # TODO: needs to account for node diameter--return 0 if nodes are touching
+    # TODO: update to include node names; return dict with names and distances
+    """
+    Get the distance from each free unit's top node to the bottom node
+    of the next free unit.
+
+    Example
+    -------
+    Free units: 1, 3, 5, 7
+
+    Checks:
+        1T -> 3B
+        3T -> 5B
+        5T -> 7B
+    """
+    i = 0
+    for unit in chain.units:
+        print(i, unit.unit_type)
+        i=i+1
+
+    free_units = [
+        unit for unit in chain.units
+        if unit.unit_type == UnitType.FREE
+    ]
+
+    distances = []
+
+    for current_unit, next_unit in zip(free_units, free_units[1:]):
+        top_node = current_unit.top_node
+        bottom_node = next_unit.bottom_node
+
+        distance = np.linalg.norm(
+            np.array(top_node.coordinates) - np.array(bottom_node.coordinates)
+        )
+
+        distances.append(distance)
+
+    return distances
 
 @log_call
 def check_two_unit_mobility(direction="right", print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
@@ -352,6 +393,9 @@ def check_n_unit_mobility(n_units, direction):
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
+
+    distances = check_top_to_bottom_node_distances(chain)
+    print(f"distances: {distances}")
 
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
