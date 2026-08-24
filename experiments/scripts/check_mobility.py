@@ -84,10 +84,9 @@ def check_neighboring_free_node_distances(chain):
             f"{distance:.6f} mm"
         )
 
+
 @log_call
-def check_top_to_bottom_node_distances(chain): 
-    # TODO: needs to account for node diameter--return 0 if nodes are touching
-    # TODO: update to include node names; return dict with names and distances
+def check_top_to_bottom_node_distances(chain):
     """
     Get the distance from each free unit's top node to the bottom node
     of the next free unit.
@@ -96,32 +95,75 @@ def check_top_to_bottom_node_distances(chain):
     -------
     Free units: 1, 3, 5, 7
 
-    Checks:
-        1T -> 3B
-        3T -> 5B
-        5T -> 7B
+    Returns:
+        {
+            "1T-3B": distance,
+            "3T-5B": distance,
+            "5T-7B": distance,
+        }
     """
-    i = 0
-    for unit in chain.units:
-        print(i, unit.unit_type)
-        i=i+1
 
     free_units = [
         unit for unit in chain.units
         if unit.unit_type == UnitType.FREE
     ]
 
-    distances = []
+    distances = {}
 
     for current_unit, next_unit in zip(free_units, free_units[1:]):
         top_node = current_unit.top_node
         bottom_node = next_unit.bottom_node
 
         distance = np.linalg.norm(
-            np.array(top_node.coordinates) - np.array(bottom_node.coordinates)
-        )
+            np.array(top_node.coordinates)
+            - np.array(bottom_node.coordinates)
+        ) - current_unit.node_diameter # accounts for radii of both (all nodes in a chain have the same diameter)
 
-        distances.append(distance)
+        node_pair = f"{top_node.descriptor}-{bottom_node.descriptor}"
+        distances[node_pair] = distance
+
+    return distances
+
+@log_call
+def check_neighboring_top_node_distances(chain):
+    """
+    Get the distance between the top nodes of each free unit and the
+    railed unit immediately following it.
+
+    Example
+    -------
+    Units: 0R, 1F, 2R, 3F, 4R, 5F, 6R
+
+    Checks:
+        1T -> 2T
+        3T -> 4T
+        5T -> 6T
+
+    Returns:
+        {
+            "1T-2T": distance,
+            "3T-4T": distance,
+            "5T-6T": distance,
+        }
+    """
+
+    distances = {}
+
+    for current_unit, next_unit in zip(chain.units, chain.units[1:]):
+        if current_unit.unit_type != UnitType.FREE:
+            continue
+
+        current_top = current_unit.top_node
+        next_top = next_unit.top_node
+
+        # get the center distance and subtract node radii
+        distance = np.linalg.norm(
+            np.array(current_top.coordinates)
+            - np.array(next_top.coordinates)
+        ) - (chain.node_diameter)
+
+        node_pair = f"{current_top.descriptor}-{next_top.descriptor}"
+        distances[node_pair] = distance
 
     return distances
 
@@ -394,14 +436,15 @@ def check_n_unit_mobility(n_units, direction):
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
     )
 
-    distances = check_top_to_bottom_node_distances(chain)
-    print(f"distances: {distances}")
+    neighboring_free_unit_distances = check_top_to_bottom_node_distances(chain)
+    top_node_distances = check_neighboring_top_node_distances(chain)
+    print(f"neighboring_free_unit_distances: {neighboring_free_unit_distances}")
+    print(f"top_node_distances: {top_node_distances}")
 
 if __name__ == "__main__":
     #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
     #check_four_unit_mobility()
     #check_five_unit_mobility()
-    # TODO: 7 unit solver finding penetration
     #check_six_unit_mobility()
-    check_n_unit_mobility(7, "right")
+    check_n_unit_mobility(8, "right")
