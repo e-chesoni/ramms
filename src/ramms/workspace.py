@@ -1172,7 +1172,7 @@ def find_right_limiting_configuration_two_unit_old(
         )
     }
 
-def resolve_shared_rail_crossing(
+def resolve_shared_rail_crossing_old(
     chain,
     railed_unit_index,
     moving_unit_index,
@@ -1403,6 +1403,273 @@ def resolve_shared_rail_crossing(
         "Could not resolve shared-rail crossing "
         "within the allowed rotation range."
     )
+
+
+def resolve_shared_rail_crossing(
+    chain,
+    railed_unit_index,
+    moving_unit_index,
+    angle_step_deg=0.1,
+    contact_tolerance=1e-6,
+    max_steps=500,
+    verbose=True,
+):
+    """
+    Back the upper FREE unit out of an invalid shared-rail
+    configuration by reducing its right rotation.
+
+    Example for Units 2-3:
+
+        shared rail:
+            1T and 3B inside Unit 2
+
+        required:
+            3B must remain above 1T
+
+        additional requirement:
+            3B3L must remain on the valid side of 2T.
+
+    Any rotational or translational correction applied to the
+    moving unit is propagated upward through the rest of the chain.
+    """
+
+    lower_free_index = (
+        railed_unit_index - 1
+    )
+
+    # Save the state produced by the 2-unit solve.
+    starting_coordinates = (
+        chain._save_coordinates()
+    )
+
+    lower_shared_node = (
+        chain.units[
+            lower_free_index
+        ].top_node
+    )
+
+    moving_bottom_node = (
+        chain.units[
+            moving_unit_index
+        ].bottom_node
+    )
+
+    moving_BL_segment = (
+        chain.get_segment_by_descriptor(
+            f"{moving_unit_index}B"
+            f"{moving_unit_index}L"
+        )
+    )
+
+    railed_top_node = (
+        chain.units[
+            railed_unit_index
+        ].top_node
+    )
+
+    # Determine the valid side of the railed top node
+    # relative to the moving B-L segment.
+    valid_side = get_reference_side(
+        chain=chain,
+        node_descriptor=(
+            f"{railed_unit_index}T"
+        ),
+        segment_descriptor=(
+            f"{moving_unit_index}B"
+            f"{moving_unit_index}L"
+        ),
+        orientation="clockwise",
+    )
+
+    for step in range(max_steps):
+
+        # -----------------------------------------------------
+        # 1. Check shared-rail ordering
+        # -----------------------------------------------------
+
+        railed_unit = chain.units[
+            railed_unit_index
+        ]
+
+        rail_bottom = np.asarray(
+            railed_unit.bottom_node.coordinates,
+            dtype=float,
+        )
+
+        rail_top = np.asarray(
+            railed_unit.top_node.coordinates,
+            dtype=float,
+        )
+
+        rail_vector = (
+            rail_top - rail_bottom
+        )
+
+        rail_length = np.linalg.norm(
+            rail_vector
+        )
+
+        if rail_length <= 1e-12:
+            raise InvalidRAMMGeometryError(
+                f"RAILED Unit "
+                f"{railed_unit_index} "
+                "has zero-length centerline."
+            )
+
+        rail_direction = (
+            rail_vector / rail_length
+        )
+
+        lower_node = np.asarray(
+            chain.units[
+                lower_free_index
+            ].top_node.coordinates,
+            dtype=float,
+        )
+
+        upper_node = np.asarray(
+            chain.units[
+                moving_unit_index
+            ].bottom_node.coordinates,
+            dtype=float,
+        )
+
+        current_spacing = np.dot(
+            upper_node - lower_node,
+            rail_direction,
+        )
+
+        shared_clearance = (
+            current_spacing
+            - chain.node_diameter
+        )
+
+        # -----------------------------------------------------
+        # 2. Check moving B-L segment / railed top-node side
+        # -----------------------------------------------------
+
+        # Refresh these objects from the current chain state,
+        # since the moving unit changes every iteration.
+        moving_BL_segment = (
+            chain.get_segment_by_descriptor(
+                f"{moving_unit_index}B"
+                f"{moving_unit_index}L"
+            )
+        )
+
+        railed_top_node = (
+            chain.units[
+                railed_unit_index
+            ].top_node
+        )
+
+        gap = get_node_segment_gap(
+            railed_top_node,
+            moving_BL_segment,
+            "clockwise",
+        )
+
+        separation = (
+            valid_side
+            * gap.result.length_mm
+        )
+
+        contact_clearance = (
+            separation
+            - chain.node_strut_contact_offset
+        )
+
+        # -----------------------------------------------------
+        # 3. Done when both conditions are physically valid
+        # -----------------------------------------------------
+
+        if (
+            shared_clearance
+            >= -contact_tolerance
+            and contact_clearance
+            >= -contact_tolerance
+        ):
+
+            if verbose:
+                print(
+                    "\nShared-rail crossing resolved:"
+                    f"\n  steps: {step}"
+                    f"\n  shared clearance: "
+                    f"{shared_clearance:.6f} mm"
+                    f"\n  "
+                    f"{moving_unit_index}B"
+                    f"{moving_unit_index}L-"
+                    f"{railed_unit_index}T clearance: "
+                    f"{contact_clearance:.6f} mm"
+                )
+
+            return {
+                "success": True,
+                "steps": step,
+                "shared_clearance": (
+                    shared_clearance
+                ),
+                "contact_clearance": (
+                    contact_clearance
+                ),
+            }
+
+        # -----------------------------------------------------
+        # 4. Reduce the right rotation
+        #
+        # Right rotation is negative, so rotating LEFT means
+        # applying a positive incremental angle.
+        #
+        # IMPORTANT:
+        # Use propagation here so every unit above the moving
+        # FREE unit follows this correction.
+        # -----------------------------------------------------
+
+        pivot = (
+            chain.units[
+                moving_unit_index
+            ].bottom_node
+        )
+
+        propagate_free_unit_rotation(
+            chain=chain,
+            unit_index=moving_unit_index,
+            pivot=pivot,
+            degrees=angle_step_deg,
+            constraint_validator=lambda chain: True,
+            verbose=False,
+        )
+
+        # -----------------------------------------------------
+        # 5. Restore shared-rail spacing
+        #
+        # enforce_shared_rail_node_spacing() already propagates
+        # its translation upward through the chain.
+        # -----------------------------------------------------
+
+        enforce_shared_rail_node_spacing(
+            chain,
+            railed_unit_index=(
+                railed_unit_index
+            ),
+            tolerance=(
+                contact_tolerance
+            ),
+        )
+
+    # ---------------------------------------------------------
+    # Could not resolve the crossing
+    # ---------------------------------------------------------
+
+    chain._restore_coordinates(
+        starting_coordinates
+    )
+
+    raise InvalidRAMMGeometryError(
+        "Could not resolve shared-rail crossing "
+        "within the allowed rotation range."
+    )
+
 
 def find_right_limiting_configuration_two_unit(
     chain,
@@ -3804,16 +4071,16 @@ def find_limiting_configuration_five_unit(
     )
 
     _ = find_right_segment_segment_contact(
-            chain=chain,
-            lower_unit_index=subset_unit_2_idx,
+        chain=chain,
+        lower_unit_index=subset_unit_2_idx,
+        contact_tolerance=contact_tolerance,
+        constraint_validator=lambda chain: configuration_is_valid(
+            chain,
             contact_tolerance=contact_tolerance,
-            constraint_validator=lambda chain: configuration_is_valid(
-                chain,
-                contact_tolerance=contact_tolerance,
-                verbose=False,
-            ),
-            verbose=True,
-        )
+            verbose=False,
+        ),
+        verbose=True,
+    )
     
     return {
         "success": True, # TODO: placeholder for now; should be updating this
@@ -3900,6 +4167,14 @@ def find_limiting_configuration_n_unit(
                     contact_tolerance=contact_tolerance,
                     verbose=verbose,
                 )
+            )
+
+            shared_rail_resolution = resolve_shared_rail_crossing(
+                chain=chain,
+                railed_unit_index=subset_railed_unit_index,
+                moving_unit_index=subset_free_moving_unit_idx,
+                contact_tolerance=contact_tolerance,
+                verbose=verbose,
             )
         else:
             lower_unit_idx = unit_idx + 1 # 2
