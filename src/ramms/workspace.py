@@ -1172,6 +1172,7 @@ def find_right_limiting_configuration_two_unit_old(
         )
     }
 
+
 def resolve_shared_rail_crossing_old(
     chain,
     railed_unit_index,

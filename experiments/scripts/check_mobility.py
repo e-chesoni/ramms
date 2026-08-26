@@ -84,7 +84,6 @@ def check_neighboring_free_node_distances(chain):
             f"{distance:.6f} mm"
         )
 
-
 @log_call
 def check_top_to_bottom_node_distances(chain):
     """
@@ -172,10 +171,6 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     two_unit_chain = make_two_unit_chain()
     PIVOT = two_unit_chain.units[1].bottom_node
 
-    print(f"Rotating chain {direction}")
-    # TODO: you should make a version of this that returns rotation and tranlation
-    # this rotates the chain (so we don't need the result)
-    # TODO: should probably change the name then...
     _ = find_limiting_configuration_two_unit(
         two_unit_chain,
         direction=direction,
@@ -441,10 +436,32 @@ def check_n_unit_mobility(n_units, direction):
     print(f"neighboring_free_unit_distances: {neighboring_free_unit_distances}")
     print(f"top_node_distances: {top_node_distances}")
 
+def make_and_display_chain(n_units, direction="right"):
+    #chain = make_chain(n_units=n_units)
+    chain = RAMM_Chain.generate(
+        n_units=n_units,
+        start_position=(0, 0),
+        offsets=(0,0),
+        node_diameter=2.0,
+    )
+    y_lim = get_ylim(n_units+1)
+    
+    plot_geometry(
+        chain,
+        plot_title="Chain",
+        xlim=XLIM,
+        ylim=(-5,25),
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )       
+
 if __name__ == "__main__":
-    #check_two_unit_mobility(direction="right", print_gaps=True)
+    #chain = make_and_display_chain(n_units=1)
+    check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
     #check_four_unit_mobility()
     #check_five_unit_mobility()
     #check_six_unit_mobility()
-    check_n_unit_mobility(8, "right")
+    #check_n_unit_mobility(8, "right")
