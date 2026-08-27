@@ -312,12 +312,17 @@ def check_four_unit_mobility():
 def check_five_unit_mobility():
     chain = make_five_unit_chain()
     PIVOT = chain.units[1].bottom_node
+    direction = "right"
+    n_units = 5
+    y_lim = get_ylim(n_units)
+    rotated_x_lim = get_rotated_xlim(n_units, direction)
+    rotated_y_lim = get_rotated_ylim(n_units, direction) # TODO: update this; clipping 5 unit
 
     plot_geometry(
         chain,
         plot_title="Before Cascading Rotation",
         xlim=XLIM,
-        ylim=FIVE_UNIT_YLIM,
+        ylim=y_lim,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
         rail_visual_offset=RAIL_VISUAL_OFFSET,
@@ -336,8 +341,8 @@ def check_five_unit_mobility():
     plot_geometry(
         chain,
         plot_title="After finding four unit subset motion limiting candidate",
-        xlim=FIVE_UNIT_ROTATED_RIGHT_XLIM,
-        ylim=ROTATED_FIVE_UNIT_YLIM,
+        xlim=rotated_x_lim,
+        ylim=(-5,60),
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
         rail_visual_offset=RAIL_VISUAL_OFFSET,
@@ -459,9 +464,9 @@ def make_and_display_chain(n_units, direction="right"):
 
 if __name__ == "__main__":
     #chain = make_and_display_chain(n_units=1)
-    check_two_unit_mobility(direction="right", print_gaps=True)
+    #check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
     #check_four_unit_mobility()
-    #check_five_unit_mobility()
+    check_five_unit_mobility()
     #check_six_unit_mobility()
     #check_n_unit_mobility(8, "right")
