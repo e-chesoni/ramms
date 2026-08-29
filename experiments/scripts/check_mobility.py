@@ -253,13 +253,15 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
 
     print("\nClose the plot to exit out of this run.")
 
+    # NOTE: plot now uses parameters that look good for overlay display;
+    # may want to change these back for non-overlay dislay
     ax = plot_geometry(
         two_unit_chain,
         plot_title="2-Unit Motion Limiting Candidate Min-theta Configuration",
-        xlim=TWO_UNIT_ROTATED_RIGHT_XLIM,
-        ylim=TWO_UNIT_YLIM,
-        node_diameter=NODE_DIAMETER_PLOT,
-        segment_line_width=SEG_LINE_WIDTH,
+        xlim=(-15,15), #TWO_UNIT_ROTATED_RIGHT_XLIM
+        ylim=TWO_UNIT_YLIM, 
+        node_diameter=2500, #NODE_DIAMETER_PLOT
+        segment_line_width=40, #SEG_LINE_WIDTH
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
         show=False,
