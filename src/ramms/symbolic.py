@@ -203,6 +203,7 @@ def get_segment_segment_symbolic_gap(
         signed_gap=sp.simplify(signed_gap)
     )
 
+
 def get_shared_rail_node_node_symbolic_gap(
     lower_node,
     upper_node,
@@ -677,130 +678,6 @@ def get_candidate_gaps_old(chain, verbose=True):
         ])
     
     return gaps
-
-
-def get_active_gap_vector_old(
-    candidate_gaps,
-    contact_offset=0.0,
-    contact_tolerance=1e-6,
-    print_gaps=True,
-    print_active_gap_vector=True
-):
-    active_gap_expressions = []
-
-    print(
-        f"Evaluating gaps with contact offset: "
-        f"{contact_offset} mm\n"
-        f"Numerical contact tolerance: "
-        f"{contact_tolerance} mm"
-    )
-
-    for candidate in candidate_gaps:
-
-        gap_length_mm = (
-            candidate.result.length_mm
-        )
-
-        # Physical clearance between the bodies.
-        clearance = (
-            gap_length_mm
-            - contact_offset
-        )
-
-        # ---------------------------------------------------------
-        # Determine what segment_1 is contacting
-        # ---------------------------------------------------------
-
-        if candidate.node is not None:
-            contact_object = candidate.node
-
-        elif candidate.segment_2 is not None:
-            contact_object = candidate.segment_2
-
-        else:
-            contact_object = "UNKNOWN"
-
-        if print_gaps:
-            gap_distance = gap_length_mm - contact_offset
-
-            if gap_distance < -contact_tolerance:
-
-                print(
-                    f"❌ PENETRATING! "
-                    f"{candidate.segment_1} and "
-                    f"{contact_object}\n"
-                    f"Gap: {gap_distance:.6f} mm"
-                )
-
-            elif math.isclose(
-                gap_distance,
-                0.0,
-                abs_tol=contact_tolerance
-            ):
-                gap_distance = 0.0 # clamp close to zero values for display
-                print(
-                    f"✅ CONTACT: "
-                    f"{candidate.segment_1} and "
-                    f"{contact_object}\n"
-                    f"Gap: {gap_distance:.6f} mm"
-                )
-
-            else:
-
-                print(
-                    f"Gap between "
-                    f"{candidate.segment_1} and "
-                    f"{contact_object} is open.\n"
-                    f"Gap: {gap_distance:.6f} mm"
-                )
-
-        # Add only actual contact constraints.
-        if math.isclose(
-            clearance,
-            0.0,
-            abs_tol=contact_tolerance
-        ):
-            # ---------------------------------------------
-            # Node-segment active gap
-            # ---------------------------------------------
-            if candidate.node is not None:
-                symbolic_gap = get_node_segment_symbolic_gap(
-                    candidate.node,
-                    candidate.segment_1,
-                    candidate.orientation
-                )
-
-                active_gap_expressions.append(
-                    symbolic_gap.signed_gap - contact_offset
-                )
-
-            # ---------------------------------------------
-            # Segment-segment active gap
-            # ---------------------------------------------
-            elif candidate.segment_2 is not None:
-                symbolic_gap = get_segment_segment_symbolic_gap(
-                    candidate.segment_1,
-                    candidate.segment_2
-                )
-
-                active_gap_expressions.append(
-                    symbolic_gap.signed_gap - contact_offset
-                )
-
-            else:
-                raise ValueError(
-                    f"Gap {candidate.name} is neither "
-                    "node-segment nor segment-segment."
-                )
-
-    active_gap_vector = sp.Matrix(
-        active_gap_expressions
-    )
-
-    if print_active_gap_vector:
-        sp.pprint(active_gap_vector)
-
-    return active_gap_vector
 
 
 def get_candidate_gaps(chain, verbose=True):

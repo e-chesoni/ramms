@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 plt.style.use("seaborn-v0_8-whitegrid")
+import matplotlib.patches as patches
 from plotly.subplots import make_subplots
+
 
 from .logger import *
 from .core import UnitType
@@ -282,4 +284,209 @@ def plot_gap(chain, gap):
 
     plt.show()
 
-    
+
+@log_call
+def overlay_cartesian_motion_cone(
+    ax,
+    point,
+    gap_jacobian,
+    point_jacobian,
+    scale=4.0,
+    n_directions=720,
+    tol=1e-10,
+):
+    """
+    Overlay the first-order admissible motion cone at a physical point.
+
+    gap_jacobian:
+        J_g such that J_g @ qdot >= 0
+
+    point_jacobian:
+        J_p such that pdot = J_p @ qdot
+
+    point:
+        physical [y, z] location where cone is drawn
+    """
+
+    Jg = np.asarray(gap_jacobian, dtype=float)
+    Jp = np.asarray(point_jacobian, dtype=float)
+    point = np.asarray(point, dtype=float)
+
+    # Remove zero rows
+    Jg = Jg[np.linalg.norm(Jg, axis=1) > tol]
+
+    # ---------------------------------------------------------
+    # Sample generalized velocity directions
+    # ---------------------------------------------------------
+
+    angles = np.linspace(0, 2*np.pi, n_directions)
+
+    qdots = np.vstack([
+        np.cos(angles),
+        np.sin(angles),
+    ])
+
+    # Keep only directions satisfying all contact inequalities
+    feasible = np.all(Jg @ qdots >= -tol, axis=0)
+
+    qdots_feasible = qdots[:, feasible]
+
+    # ---------------------------------------------------------
+    # Map generalized velocity -> physical point velocity
+    # ---------------------------------------------------------
+
+    pdots = Jp @ qdots_feasible
+
+    # Normalize only for visualization
+    norms = np.linalg.norm(pdots, axis=0)
+    good = norms > tol
+
+    pdots = pdots[:, good]
+    pdots /= np.linalg.norm(pdots, axis=0)
+
+    # ---------------------------------------------------------
+    # Draw rays / shaded cone
+    # ---------------------------------------------------------
+
+    y0, z0 = point
+
+    ys = y0 + scale * pdots[0, :]
+    zs = z0 + scale * pdots[1, :]
+
+    # Shaded physical motion region
+    ax.fill(
+        np.concatenate([[y0], ys, [y0]]),
+        np.concatenate([[z0], zs, [z0]]),
+        alpha=0.2,
+        zorder=20,
+    )
+
+    # Boundary / representative rays
+    for idx in [0, -1]:
+        ax.plot(
+            [y0, ys[idx]],
+            [z0, zs[idx]],
+            linewidth=2,
+            zorder=21,
+        )
+
+@log_call
+def overlay_rotation_cone(
+    ax,
+    center,
+    radius_inner=2.2,
+    radius_outer=3.4,
+    theta_start=20,
+    theta_end=120,
+    label=r"$+\dot{\theta}_1$ admissible",
+):
+    y0, z0 = center
+
+    # Curved wedge / annular sector
+    wedge = patches.Wedge(
+        center=(y0, z0),
+        r=radius_outer,
+        theta1=theta_start,
+        theta2=theta_end,
+        width=radius_outer - radius_inner,
+        alpha=0.2,
+        zorder=29,
+    )
+    ax.add_patch(wedge)
+
+    # Curved arrow along middle of sector
+    radius_mid = 0.5 * (radius_inner + radius_outer)
+
+    theta_arrow_start = theta_start + 10
+    theta_arrow_end = theta_end - 10
+
+    t_start = np.deg2rad(theta_arrow_start)
+    t_end = np.deg2rad(theta_arrow_end)
+
+    p_start = (
+        y0 + radius_mid * np.cos(t_start),
+        z0 + radius_mid * np.sin(t_start),
+    )
+
+    p_end = (
+        y0 + radius_mid * np.cos(t_end),
+        z0 + radius_mid * np.sin(t_end),
+    )
+
+    ax.annotate(
+        "",
+        xy=p_end,
+        xytext=p_start,
+        arrowprops=dict(
+            arrowstyle="->",
+            linewidth=2,
+            connectionstyle="arc3,rad=0.35",
+        ),
+        zorder=31,
+    )
+
+    # Label
+    theta_mid = np.deg2rad((theta_start + theta_end) / 2)
+
+    p_label = (
+        y0 + 1.25 * radius_outer * np.cos(theta_mid),
+        z0 + 1.25 * radius_outer * np.sin(theta_mid),
+    )
+
+    ax.text(
+        p_label[0],
+        p_label[1],
+        label,
+        ha="center",
+        va="center",
+        fontsize=10,
+        zorder=32,
+    )
+
+def overlay_rotation_sector(
+    ax,
+    center,
+    radius,
+    theta_start,
+    theta_end,
+    label=r"$+\dot{\theta}_1$ admissible",
+):
+    y0, z0 = center
+
+    wedge = patches.Wedge(
+        center=(y0, z0),
+        r=radius,
+        theta1=theta_start,
+        theta2=theta_end,
+        alpha=0.12,
+        zorder=5,
+    )
+    ax.add_patch(wedge)
+
+    # curved arrow near outer edge
+    r_arrow = 0.85 * radius
+
+    t1 = np.deg2rad(theta_start + 5)
+    t2 = np.deg2rad(theta_end - 5)
+
+    p_start = (
+        y0 + r_arrow * np.cos(t1),
+        z0 + r_arrow * np.sin(t1),
+    )
+
+    p_end = (
+        y0 + r_arrow * np.cos(t2),
+        z0 + r_arrow * np.sin(t2),
+    )
+
+    ax.annotate(
+        "",
+        xy=p_end,
+        xytext=p_start,
+        arrowprops=dict(
+            arrowstyle="->",
+            linewidth=2,
+            connectionstyle="arc3,rad=0.3",
+        ),
+        zorder=20,
+    )

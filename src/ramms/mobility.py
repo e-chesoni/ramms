@@ -146,7 +146,7 @@ def get_gap_jacobian(active_gap_vector, q=None, print_active_gap=False, print_ac
         print("Jacobian dimensions: ")
         print(J.shape)
     
-    return active_gap_vector.jacobian(q), q
+    return J, q
 
 
 @log_call

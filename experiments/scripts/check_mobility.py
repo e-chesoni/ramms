@@ -1,5 +1,6 @@
 """End-to-end check from a configured chain to active gaps and Jacobian."""
 
+from matplotlib import pyplot as plt
 import numpy as np
 import sympy as sp
 from IPython.display import display
@@ -37,7 +38,12 @@ from _fixtures import (
     ROTATED_SIX_UNIT_YLIM,
 )
 from ramms.core import RAMM_Chain, UnitType
-from ramms.plotting import plot_geometry
+from ramms.plotting import (
+    overlay_rotation_cone,
+    overlay_rotation_sector,
+    plot_geometry,
+    overlay_cartesian_motion_cone,
+)
 from ramms.kinematics import (
     enforce_shared_rail_node_spacing,
     get_free_bottom_rail_top_distances,
@@ -180,6 +186,7 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     tol = two_unit_chain.node_strut_contact_offset
     print(f"TOLERANCE:{tol}")
     candidate_gaps = get_candidate_gaps(two_unit_chain) # TODO: fix me: problems now for 2 unit solution following changes madde for 4 and 5 unit solutions...
+
     active_gap_vector = get_active_gap_vector(
         candidate_gaps,
         contact_offset=tol,
@@ -196,6 +203,31 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
         point_positions,
         active_gap_vector
     )
+
+    # stuff for wedge
+    p_1B = np.asarray(point_positions["1B"], dtype=float)
+    p_1R = np.asarray(point_positions["1R"], dtype=float)
+
+    r = p_1R - p_1B
+
+    J_1R = np.array([
+        [0.0, -r[1]],
+        [1.0,  r[0]],
+    ])
+
+    p_1B = np.asarray(point_positions["1B"], dtype=float)
+    p_1T = np.asarray(point_positions["1T"], dtype=float)
+
+    v = p_1T - p_1B
+
+    theta_current = np.degrees(
+        np.arctan2(v[1], v[0])
+    )
+
+    half_angle = abs(90.0 - theta_current)
+
+    theta_start = 90.0 - half_angle
+    theta_end   = 90.0 + half_angle
 
     # Differentiate gaps to obtain the constraint Jacobian
     generalized_jacobian = get_generalized_jacobian(
@@ -214,21 +246,48 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
         q,
     )
 
+    J = analysis.jacobian_numeric
+
     # Test admissible motion in each generalized-coordinate direction
     analyze_remaining_motion(analysis, q)
 
     print("\nClose the plot to exit out of this run.")
 
-    plot_geometry(
+    ax = plot_geometry(
         two_unit_chain,
-        plot_title="2-Unit Candidate Jamming Configuration",
+        plot_title="2-Unit Motion Limiting Candidate Min-theta Configuration",
         xlim=TWO_UNIT_ROTATED_RIGHT_XLIM,
         ylim=TWO_UNIT_YLIM,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
         rail_visual_offset=RAIL_VISUAL_OFFSET,
         rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
-    )  
+        show=False,
+    )
+
+    # Velocity available to 1R
+    # NOTE: while it would be nice ot show this about 1B,
+    # since 1B would only rotate here, the velocity is 0
+    # (i.e. its a very boring addition to the plot)
+    """
+    overlay_cartesian_motion_cone(
+        ax,
+        point=point_positions["1R"],
+        gap_jacobian=J,
+        point_jacobian=J_1R,
+    )
+    """
+    radius = np.linalg.norm(v)
+
+    overlay_rotation_sector(
+        ax,
+        center=point_positions["1B"],
+        radius=radius,
+        theta_start=theta_start,
+        theta_end=theta_end,
+    )
+
+    plt.show()
 
 @log_call
 def check_three_unit_mobility() -> None:
@@ -464,9 +523,9 @@ def make_and_display_chain(n_units, direction="right"):
 
 if __name__ == "__main__":
     #chain = make_and_display_chain(n_units=1)
-    #check_two_unit_mobility(direction="right", print_gaps=True)
+    check_two_unit_mobility(direction="right", print_gaps=True)
     #check_three_unit_mobility()
     #check_four_unit_mobility()
-    check_five_unit_mobility()
+    #check_five_unit_mobility()
     #check_six_unit_mobility()
     #check_n_unit_mobility(8, "right")
