@@ -271,16 +271,14 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     # NOTE: while it would be nice ot show this about 1B,
     # since 1B would only rotate here, the velocity is 0
     # (i.e. its a very boring addition to the plot)
-    """
     overlay_cartesian_motion_cone(
         ax,
         point=point_positions["1R"],
         gap_jacobian=J,
         point_jacobian=J_1R,
     )
-    """
     radius = np.linalg.norm(v)
-
+    """
     overlay_rotation_sector(
         ax,
         center=point_positions["1B"],
@@ -288,7 +286,7 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
         theta_start=theta_start,
         theta_end=theta_end,
     )
-
+    """
     plt.show()
 
 @log_call
