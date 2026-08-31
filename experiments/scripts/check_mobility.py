@@ -39,6 +39,9 @@ from _fixtures import (
 )
 from ramms.core import RAMM_Chain, UnitType
 from ramms.plotting import (
+    overlay_contact_normal,
+    overlay_contact_velocity,
+    overlay_gap_velocity,
     overlay_rotation_cone,
     overlay_rotation_sector,
     plot_geometry,
@@ -187,12 +190,30 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     print(f"TOLERANCE:{tol}")
     candidate_gaps = get_candidate_gaps(two_unit_chain) # TODO: fix me: problems now for 2 unit solution following changes madde for 4 and 5 unit solutions...
 
-    active_gap_vector = get_active_gap_vector(
-        candidate_gaps,
-        contact_offset=tol,
-        print_gaps=print_gaps,
-        print_active_gap_vector=print_active_gap_vec,
-    )
+    # normal direction plotting stuff
+    active_candidates = []
+
+    for candidate in candidate_gaps:
+        candidate_contact_offset = getattr(
+            candidate,
+            "contact_offset",
+            tol,
+        )
+
+        clearance = (
+            candidate.result.length_mm
+            - candidate_contact_offset
+        )
+
+        if np.isclose(clearance, 0.0, atol=1e-6):
+            active_candidates.append(candidate)
+        # back to the og analysis
+        active_gap_vector = get_active_gap_vector(
+            candidate_gaps,
+            contact_offset=tol,
+            print_gaps=print_gaps,
+            print_active_gap_vector=print_active_gap_vec,
+        )
 
     # Get point coordinates at the candidate configuration
     point_positions = two_unit_chain.get_geometric_point_positions()
@@ -229,6 +250,7 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     theta_start = 90.0 - half_angle
     theta_end   = 90.0 + half_angle
 
+    # back to the og analysis
     # Differentiate gaps to obtain the constraint Jacobian
     generalized_jacobian = get_generalized_jacobian(
         generalized_gap_vector,
@@ -271,6 +293,7 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     # NOTE: while it would be nice ot show this about 1B,
     # since 1B would only rotate here, the velocity is 0
     # (i.e. its a very boring addition to the plot)
+    """
     overlay_cartesian_motion_cone(
         ax,
         point=point_positions["1R"],
@@ -278,6 +301,7 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
         point_jacobian=J_1R,
     )
     radius = np.linalg.norm(v)
+    """
     """
     overlay_rotation_sector(
         ax,
@@ -287,6 +311,47 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
         theta_end=theta_end,
     )
     """
+    for gap in active_candidates:
+
+        # Only show node-segment contact normals
+        if gap.node is None:
+            continue
+
+        # Do not visualize rail-contact normals
+        if getattr(gap.segment_1, "segment_type", None) == "rail":
+            continue
+
+        overlay_contact_normal(
+            ax,
+            gap=gap,
+            scale=4.0,
+        )
+
+    qdot_test = np.array([
+        0.0,
+        1.0,
+    ])
+
+    for gap in active_candidates:
+
+        if gap.node is None:
+            continue
+
+        if getattr(gap.segment_1, "segment_type", None) == "rail":
+            continue
+
+        overlay_contact_normal(
+            ax,
+            gap=gap,
+            scale=4.0,
+        )
+
+        overlay_gap_velocity(
+            ax,
+            gap=gap,
+            pivot=point_positions["1B"],
+            qdot=qdot_test,
+        )
     plt.show()
 
 @log_call
@@ -528,4 +593,4 @@ if __name__ == "__main__":
     #check_four_unit_mobility()
     #check_five_unit_mobility()
     #check_six_unit_mobility()
-    #check_n_unit_mobility(8, "right")
+    #check_n_unit_mobility(6, "right")

@@ -490,3 +490,187 @@ def overlay_rotation_sector(
         ),
         zorder=20,
     )
+
+@log_call
+def overlay_contact_normal(
+    ax,
+    gap,
+    scale=4.0,
+    linewidth=3,
+):
+    q = np.asarray(
+        gap.result.projection_coordinate,
+        dtype=float
+    )
+
+    p = np.asarray(
+        gap.result.node_coordinate,
+        dtype=float
+    )
+
+    n = q - p
+    n_hat = n / np.linalg.norm(n)
+
+    end = q + scale * n_hat
+
+    ax.annotate(
+        "",
+        xy=end,
+        xytext=q,
+        arrowprops=dict(
+            arrowstyle="->",
+            color="red",
+            linewidth=linewidth,
+        ),
+        zorder=30,
+    )
+
+@log_call
+def overlay_contact_velocity(
+    ax,
+    gap,
+    pivot,
+    qdot,
+    scale=3.0,
+    linewidth=3,
+):
+    """
+    Overlay Cartesian velocity of the moving contact point Q
+    produced by a specified generalized velocity qdot.
+
+    Assumes:
+        q = [z_1, theta_1]
+        pivot = 1B
+        Q lies on the moving unit.
+    """
+
+    # Ignore non-node-segment contacts
+    if gap.node is None:
+        return
+
+    # Ignore rail contacts
+    if getattr(gap.segment_1, "segment_type", None) == "rail":
+        return
+
+    q = np.asarray(
+        gap.result.projection_coordinate,
+        dtype=float,
+    )
+
+    pivot = np.asarray(
+        pivot,
+        dtype=float,
+    )
+
+    qdot = np.asarray(
+        qdot,
+        dtype=float,
+    )
+
+    # Position of contact point relative to pivot
+    r = q - pivot
+
+    # Point Jacobian:
+    #
+    # [ ydot ]   [ 0  -r_z ] [ zdot     ]
+    # [ zdot ] = [ 1   r_y ] [ thetadot ]
+    #
+    J_q = np.array([
+        [0.0, -r[1]],
+        [1.0,  r[0]],
+    ])
+
+    velocity = J_q @ qdot
+
+    speed = np.linalg.norm(velocity)
+
+    if speed < 1e-12:
+        return
+
+    # Normalize only for visualization
+    v_hat = velocity / speed
+
+    end = q + scale * v_hat
+
+    ax.annotate(
+        "",
+        xy=end,
+        xytext=q,
+        arrowprops=dict(
+            arrowstyle="->",
+            color="black",
+            linewidth=linewidth,
+        ),
+        zorder=31,
+    )
+
+@log_call
+def overlay_gap_velocity(
+    ax,
+    gap,
+    pivot,
+    qdot,
+    text_offset=(6, 6),
+):
+    # Ignore non-node-segment contacts
+    if gap.node is None:
+        return
+
+    # Ignore rail contacts
+    if getattr(gap.segment_1, "segment_type", None) == "rail":
+        return
+
+    q = np.asarray(
+        gap.result.projection_coordinate,
+        dtype=float,
+    )
+
+    p = np.asarray(
+        gap.result.node_coordinate,
+        dtype=float,
+    )
+
+    pivot = np.asarray(
+        pivot,
+        dtype=float,
+    )
+
+    qdot = np.asarray(
+        qdot,
+        dtype=float,
+    )
+
+    # Signed normal direction
+    n = q - p
+    n_hat = n / np.linalg.norm(n)
+
+    # Position of contact point Q relative to pivot
+    r = q - pivot
+
+    # Cartesian point Jacobian
+    J_q = np.array([
+        [0.0, -r[1]],
+        [1.0,  r[0]],
+    ])
+
+    # Cartesian velocity of Q
+    v = J_q @ qdot
+
+    # Normal component of velocity
+    gdot = np.dot(n_hat, v)
+
+    ax.annotate(
+        rf"$\dot{{g}}={gdot:.2f}$",
+        xy=q,
+        xytext=text_offset,
+        textcoords="offset points",
+        color="black",
+        fontsize=11,
+        zorder=32,
+    )
+
+    print(
+        f"{gap.name}: "
+        f"v = {v}, "
+        f"gdot = {gdot:.6f}"
+    )
