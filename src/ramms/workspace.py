@@ -449,10 +449,8 @@ def find_right_segment_segment_contact(
         )
 
         node_contacts_valid = (
-            result["left_clearance"]
-            >= -contact_tolerance
-            and result["bottom_clearance"]
-            >= -contact_tolerance
+            result["left_clearance"] >= -contact_tolerance
+            and result["bottom_clearance"] >= -contact_tolerance
         )
 
         if not node_contacts_valid:
@@ -1680,7 +1678,6 @@ def find_right_limiting_configuration_two_unit(
     z_guess=-1.8,
     theta_bounds=(-60.0, 0.0),
     z_bounds=(-8.0, 5.0),
-    default_offset=10,
     contact_offset=0.0,
     contact_tolerance=1e-6,
     verbose=True
@@ -2625,7 +2622,7 @@ def find_limiting_configuration_two_unit(
 
     if len(chain.units) != 2:
         raise ValueError(
-            "find_two_unit_jamming_candidate requires a 2-unit chain."
+            "find_limiting_configuration_two_unit requires a 2-unit chain."
         )
 
     direction = direction.lower()
@@ -3253,7 +3250,6 @@ def _try_limiting_configuration_three_unit(
 
     # ---------------------------------------------------------
     # 4. Use either:
-    #
     #     - the full 2-unit limiting angle, or
     #     - the angle requested by the outer stepper.
     # ---------------------------------------------------------
@@ -3504,7 +3500,7 @@ def find_limiting_configuration_three_unit(
     angle_step_deg=0.25,
     min_angle_deg=0.0,
     contact_tolerance=1e-6,
-    verbose=True,
+    verbose=False,
 ):
     """
     Find a 3-unit limiting configuration by progressively reducing
@@ -3530,6 +3526,15 @@ def find_limiting_configuration_three_unit(
     For right rotation, the 2-unit limiting angle is negative.
     The search therefore reduces its magnitude toward zero.
     """
+    if isinstance(verbose, dict):
+        verbose = verbose.get(
+            "find_limiting_configuration_three_unit",
+            False
+        )
+
+    if verbose:
+        print("Finding limiting configuration...")
+
     direction = (
         direction.lower()
     )
@@ -3571,6 +3576,12 @@ def find_limiting_configuration_three_unit(
         starting_coordinates
     )
 
+    if isinstance(verbose, dict):
+        print_try_limiting_configuration_three_unit = verbose.get(
+            "_try_limiting_configuration_three_unit",
+            False
+        )
+
     initial_trial = (
         _try_limiting_configuration_three_unit(
             chain=chain,
@@ -3582,7 +3593,7 @@ def find_limiting_configuration_three_unit(
             contact_tolerance=(
                 contact_tolerance
             ),
-            verbose=False,
+            verbose=_try_limiting_configuration_three_unit,
         )
     )
 
@@ -3779,7 +3790,6 @@ def find_limiting_configuration_three_unit(
 
         # -----------------------------------------------------
         # This angle was blocked before segment contact.
-        #
         # Report WHY, then try a slightly smaller rotation.
         # -----------------------------------------------------
 

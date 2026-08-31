@@ -44,12 +44,12 @@ def get_rotated_ylim(n_units: int, direction: str = "right"):
         Generate (our system is in x,y,z coord and we look at the y-z plane
         x-axis limits for a rotated n-unit chain.
     """
-    x_max = max(25, 10 * n_units - 15)
+    y_max = max(25, 10 * n_units - 15)
 
     if direction == "right":
-        return (-15, x_max)
+        return (-15, y_max)
     elif direction == "left":
-        return (-x_max, 15)
+        return (-y_max, 15)
     else:
         raise ValueError("direction must be 'right' or 'left'")
 
@@ -57,9 +57,9 @@ def get_rotated_ylim(n_units: int, direction: str = "right"):
 # TODO: will need this for left too one day...
 def get_rotated_zlim(n_units: int):
     """Generate y-axis limits for a rotated n-unit chain."""
-    y_max = 15 * n_units + 5
+    z_max = 15 * n_units + 5
 
-    return (-5, y_max)
+    return (-5, z_max)
 
 def make_two_unit_chain(node_diameter: float = 2.0) -> RAMM_Chain:
     total_units = 2

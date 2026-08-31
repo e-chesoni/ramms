@@ -1616,26 +1616,22 @@ def get_symbolic_point_position_2unit(
 def get_symbolic_point_position(
     point_default,
     pivot_default,
-    dy,
     dz,
     theta,
 ):
     """
-    Express a point position symbolically in terms of a unit's
-    translational and rotational generalized coordinates.
+    Express a point position symbolically in terms of
+    vertical translation and rotation only.
     """
 
     y0, z0 = point_default
     py, pz = pivot_default
 
-    # Point coordinates relative to the rotation pivot
     ry = y0 - py
     rz = z0 - pz
 
-    # Rigid translation + rotation
     y = (
         py
-        + dy
         + ry * sp.cos(theta)
         - rz * sp.sin(theta)
     )
@@ -1651,7 +1647,6 @@ def get_symbolic_point_position(
         "y": sp.simplify(y),
         "z": sp.simplify(z),
     }
-
 
 def get_generalized_coordinates(chain):
     """
@@ -1689,18 +1684,17 @@ def get_generalized_coordinates(chain):
 
         # Moving RAILED unit: y + z translation + rotation
         elif unit.unit_type == UnitType.RAILED:
-            dy, dz, theta = sp.symbols(
-                f"y_{unit_index} z_{unit_index} theta_{unit_index}",
+            dz, theta = sp.symbols(
+                f"z_{unit_index} theta_{unit_index}",
                 real=True,
             )
 
             unit_coordinates[unit_index] = {
-                "dy": dy,
                 "dz": dz,
                 "theta": theta,
             }
 
-            q.extend([dy, dz, theta])
+            q.extend([dz, theta])
 
         else:
             raise ValueError(
@@ -1767,7 +1761,7 @@ def express_gaps_in_generalized_coordinates(
         symbolic_position = get_symbolic_point_position(
             point_default=point_default,
             pivot_default=pivot_default,
-            dy=coords["dy"],
+            #dy=coords["dy"],
             dz=coords["dz"],
             theta=coords["theta"],
         )

@@ -79,7 +79,14 @@ from ramms.workspace import (
     find_right_segment_segment_contact,
 )
 
-CONTACT_TOLERANCE = 0.085
+CONTACT_TOLERANCE = 0.085 #0.085
+
+DEFAULT_VERBOSE = {
+    "find_limiting_configuration_three_unit": False,
+    "_try_limiting_configuration_three_unit": False,
+    "get_candidate_gaps": False,
+    "get_active_gap_vector": False,
+}
 
 @log_call
 def check_neighboring_free_node_distances(chain):
@@ -651,8 +658,8 @@ if __name__ == "__main__":
     direction = "right"
     #chain = make_and_display_chain(n_units=1)
     #check_two_unit_mobility(2, direction)
-    check_three_unit_mobility(3, direction)
+    #check_three_unit_mobility(3, direction)
     #check_four_unit_mobility()
-    #check_five_unit_mobility()
+    check_five_unit_mobility()
     #check_six_unit_mobility()
     #check_n_unit_mobility(8, "right")
