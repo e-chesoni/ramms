@@ -35,12 +35,15 @@ def get_ylim(n_units: int):
     y_max = 15 * n_units + 5
 
     if n_units == 2:
-        y_max = 30
+        y_max = 35
 
     return (-5, y_max)
 
-def get_rotated_xlim(n_units: int, direction: str = "right"):
-    """Generate x-axis limits for a rotated n-unit chain."""
+def get_rotated_ylim(n_units: int, direction: str = "right"):
+    """
+        Generate (our system is in x,y,z coord and we look at the y-z plane
+        x-axis limits for a rotated n-unit chain.
+    """
     x_max = max(25, 10 * n_units - 15)
 
     if direction == "right":
@@ -52,9 +55,9 @@ def get_rotated_xlim(n_units: int, direction: str = "right"):
 
 
 # TODO: will need this for left too one day...
-def get_rotated_ylim(n_units: int, direction: str ="right"):
+def get_rotated_zlim(n_units: int):
     """Generate y-axis limits for a rotated n-unit chain."""
-    y_max = 10 * n_units + 5
+    y_max = 15 * n_units + 5
 
     return (-5, y_max)
 

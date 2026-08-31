@@ -2595,6 +2595,7 @@ def find_vertical_limit(
 def find_limiting_configuration_two_unit(
     chain,
     direction,
+    contact_tolerance=1e-6, # not yet used in this solver
     verbose=True,
 ):
     """
@@ -3529,7 +3530,6 @@ def find_limiting_configuration_three_unit(
     For right rotation, the 2-unit limiting angle is negative.
     The search therefore reduces its magnitude toward zero.
     """
-
     direction = (
         direction.lower()
     )
@@ -4130,15 +4130,24 @@ def find_limiting_configuration_n_unit(
     start_index=0,
     direction="right",
     contact_tolerance=1e-6,
+    angle_step_deg=0.25,
     verbose=True,
 ):
     chain_length = len(chain.units)
-    if chain_length < 4:
-        print("Chain is too short for n_unit solver. Use specific length solvers for chains shorther than 4 units."
-              f"\n Chain length: {chain_length}")
+    if chain_length < 2:
+        print(f"Chains require at least 2 units. Chain length: {chain_length}")
 
     direction = direction.lower()
+    if chain_length == 2:
+        two_unit_result = find_limiting_configuration_two_unit(
+            chain=chain,
+            direction=direction,
+            contact_tolerance=contact_tolerance,
+            verbose=verbose,
+        )
+        return two_unit_result
 
+    # 3 unit solution is used in 3-unit + solver
     # get 3 unit solution
     three_unit_result = find_limiting_configuration_three_unit(
         chain=chain,
@@ -4147,6 +4156,10 @@ def find_limiting_configuration_n_unit(
         contact_tolerance=contact_tolerance,
         verbose=verbose,
     )
+
+    if chain_length == 3:
+        return three_unit_result
+    
     # SIX UNIT CHAIN WALKTHROUGH
     for unit_idx in range(chain_length - 3): # runs twice
         sovling_chain_length = 3 + 1 + unit_idx # TODO: obviously 4; clean this up later

@@ -7,8 +7,8 @@ from IPython.display import display
 
 from ramms.logger import log_call
 from _fixtures import (
-    get_rotated_xlim,
     get_rotated_ylim,
+    get_rotated_zlim,
     get_ylim,
     make_two_unit_chain,
     make_three_unit_chain,
@@ -176,7 +176,50 @@ def check_neighboring_top_node_distances(chain):
     return distances
 
 @log_call
-def check_two_unit_mobility(direction="right", print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
+def check_two_unit_mobility(n_units, direction) -> None:
+    chain = make_chain(n_units=n_units)
+    PIVOT = chain.units[1].bottom_node
+    
+    y_lim = get_ylim(n_units)
+    rotated_x_lim = get_rotated_ylim(n_units, direction)
+    rotated_y_lim = get_rotated_zlim(n_units)
+    
+    plot_geometry(
+        chain,
+        plot_title=f"{n_units} Default Configuration",
+        xlim=XLIM,
+        ylim=y_lim,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
+    _ = find_limiting_configuration_n_unit(
+        chain=chain,
+        direction=direction,
+    )
+
+    anayze_motion_limiting_candidate(chain, CONTACT_TOLERANCE)
+
+    # Plot final configuration
+    print(
+        "\nClose the plot to exit out of this run."
+    )
+
+    plot_geometry(
+        chain,
+        plot_title=f"{n_units}-Unit Candidate Jamming Configuration",
+        xlim=rotated_x_lim,
+        ylim=rotated_y_lim,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
+@log_call
+def check_two_unit_mobility_with_overlays(direction="right", print_find_candidate_results=False, print_gen_coords=False, print_gaps=False, print_active_gap_vec=False, print_active_gap_details=False) -> None:
     two_unit_chain = make_two_unit_chain()
     PIVOT = two_unit_chain.units[1].bottom_node
 
@@ -355,23 +398,41 @@ def check_two_unit_mobility(direction="right", print_find_candidate_results=Fals
     plt.show()
 
 @log_call
-def check_three_unit_mobility() -> None:
+def check_three_unit_mobility(n_units, direction) -> None:
     """
     End-to-end mobility check for a candidate 3-unit
     jamming configuration.
     """
 
     # generate chain
-    three_unit_chain = make_three_unit_chain()
+    chain = make_three_unit_chain()
 
-    _ = find_limiting_configuration_three_unit(
-        chain=three_unit_chain,
+    if direction.lower() == "right":
+        config_type = r"Min-$\theta$"
+
+    y_lim = get_ylim(n_units)
+    rotated_y_lim = get_rotated_ylim(n_units, direction)
+    rotated_z_lim = get_rotated_zlim(n_units)
+    
+    plot_geometry(
+        chain,
+        plot_title=f"{n_units}-Unit Default Configuration",
+        xlim=XLIM,
+        ylim=y_lim,
+        node_diameter=NODE_DIAMETER_PLOT,
+        segment_line_width=SEG_LINE_WIDTH,
+        rail_visual_offset=RAIL_VISUAL_OFFSET,
+        rail_visual_shorten=RAIL_VISUAL_SHORTTEN,
+    )
+
+    _ = find_limiting_configuration_n_unit(
+        chain=chain,
         direction="right",
         angle_step_deg=0.25,
         contact_tolerance=CONTACT_TOLERANCE,
     )
 
-    anayze_motion_limiting_candidate(three_unit_chain, CONTACT_TOLERANCE)
+    anayze_motion_limiting_candidate(chain, CONTACT_TOLERANCE)
 
     # Plot final configuration
     print(
@@ -379,10 +440,10 @@ def check_three_unit_mobility() -> None:
     )
 
     plot_geometry(
-        three_unit_chain,
-        plot_title="3-Unit Candidate Jamming Configuration",
-        xlim=THREE_UNIT_ROTATED_RIGHT_XLIM,
-        ylim=ROTATED_THREE_UNIT_YLIM,
+        chain,
+        plot_title=f"{n_units}-Unit {config_type} Motion-Limiting Config",
+        xlim=rotated_y_lim,
+        ylim=rotated_z_lim,
         node_diameter=NODE_DIAMETER_PLOT,
         segment_line_width=SEG_LINE_WIDTH,
         rail_visual_offset=RAIL_VISUAL_OFFSET,
@@ -439,8 +500,8 @@ def check_five_unit_mobility():
     direction = "right"
     n_units = 5
     y_lim = get_ylim(n_units)
-    rotated_x_lim = get_rotated_xlim(n_units, direction)
-    rotated_y_lim = get_rotated_ylim(n_units, direction) # TODO: update this; clipping 5 unit
+    rotated_x_lim = get_rotated_ylim(n_units, direction)
+    rotated_y_lim = get_rotated_zlim(n_units) # TODO: update this; clipping 5 unit
 
     plot_geometry(
         chain,
@@ -519,8 +580,8 @@ def check_n_unit_mobility(n_units, direction):
     PIVOT = chain.units[1].bottom_node
     
     y_lim = get_ylim(n_units)
-    rotated_x_lim = get_rotated_xlim(n_units, direction)
-    rotated_y_lim = get_rotated_ylim(n_units, direction)
+    rotated_x_lim = get_rotated_ylim(n_units, direction)
+    rotated_y_lim = get_rotated_zlim(n_units)
     
     plot_geometry(
         chain,
@@ -587,10 +648,11 @@ def make_and_display_chain(n_units, direction="right"):
     )       
 
 if __name__ == "__main__":
+    direction = "right"
     #chain = make_and_display_chain(n_units=1)
-    check_two_unit_mobility(direction="right", print_gaps=True)
-    #check_three_unit_mobility()
+    #check_two_unit_mobility(2, direction)
+    check_three_unit_mobility(3, direction)
     #check_four_unit_mobility()
     #check_five_unit_mobility()
     #check_six_unit_mobility()
-    #check_n_unit_mobility(6, "right")
+    #check_n_unit_mobility(8, "right")
