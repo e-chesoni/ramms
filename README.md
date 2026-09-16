@@ -123,7 +123,7 @@ The null space of `J(q)` therefore provides a local description of the motions a
 
 ## Status
 
-🚧 **Completed**
+✅ **Completed**
 
 ## License
 
