@@ -127,4 +127,4 @@ The null space of `J(q)` therefore provides a local description of the motions a
 
 ## License
 
-License information will be added as the project develops.
+Just give us a shoutout :)
