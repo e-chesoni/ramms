@@ -4,6 +4,8 @@ A Python package for constructing, visualizing, and analyzing **Reconfigurable A
 
 RAMMs are modular mechanical structures whose global geometry and mechanical behavior emerge from the configuration and interactions of their constituent units. This package provides tools for computationally representing these structures and studying their kinematics, contact constraints, and reconfiguration.
 
+<img width="457" height="298" alt="cbba64b3-c8a7-485f-bbe4-69bb9eb8ee97" src="https://github.com/user-attachments/assets/185a5708-41f1-49b8-a9ea-9b0d223c8981" />
+
 Motivation
 
 This project is inspired by Polycatenated Architected Materials (PAMs) developed by Chiara Daraio's group at Caltech: [3D Polycatenated Architected Materials (PAMs) Zhou et al. in Science](https://doi.org/10.1126/science.adr9713).
@@ -117,11 +119,11 @@ J(q)\dot{q} = 0.
 
 The null space of `J(q)` therefore provides a local description of the motions available to the structure under its current set of contacts. Changes in the active contact set can alter this null space, producing transitions between different mobility regimes and, potentially, mechanically jammed configurations.
 
+<img width="910" height="392" alt="bea82793-87ec-4cf8-8a99-7ff678f4e9a7" src="https://github.com/user-attachments/assets/b5edc09e-ebf9-4bdd-aa11-e4aa7568657e" />
+
 ## Status
 
-🚧 **Active research / early development**
-
-The package API and repository structure are expected to change as the RAMM modeling and analysis framework develops.
+🚧 **Completed**
 
 ## License
 
